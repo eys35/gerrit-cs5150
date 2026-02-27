@@ -148,11 +148,11 @@ public class ReviewerRecommender {
     //                                + w4·crossRepo - w5·loadPenalty
     // All weights are tunable in gerrit.config under [algorithmicReviewer].
     // Each apply* method is currently a no-op; base scoring remains the fallback.
-    double w1 = config.getDouble("algorithmicReviewer", "w1", 0.35); // ownership
-    double w2 = config.getDouble("algorithmicReviewer", "w2", 0.30); // file familiarity
-    double w3 = config.getDouble("algorithmicReviewer", "w3", 0.20); // engagement
-    double w4 = config.getDouble("algorithmicReviewer", "w4", 0.10); // cross-repo
-    double w5 = config.getDouble("algorithmicReviewer", "w5", 0.05); // load penalty
+    double w1 = config.getDouble("algorithmicReviewer", null, "w1", 0.35); // ownership
+    double w2 = config.getDouble("algorithmicReviewer", null, "w2", 0.30); // file familiarity
+    double w3 = config.getDouble("algorithmicReviewer", null, "w3", 0.20); // engagement
+    double w4 = config.getDouble("algorithmicReviewer", null, "w4", 0.10); // cross-repo
+    double w5 = config.getDouble("algorithmicReviewer", null, "w5", 0.05); // load penalty
     int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
     logger.atFine().log(
         "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s",
@@ -164,7 +164,7 @@ public class ReviewerRecommender {
     applyCrossRepoScores(changeNotes, projectState, candidateScores, w4);
     applyLoadPenalties(candidateScores, w5);
     applyDiversityCap(candidateScores, diversityCap);
-    // --- End algorithmic reviewer scoring ---
+
 
     // Send the query along with a candidate list to all plugins and merge the
     // results. Plugins don't necessarily need to use the candidates list, they
