@@ -14,8 +14,8 @@ import '../../shared/gr-account-list/gr-account-list';
 import '../gr-label-scores/gr-label-scores';
 import '../gr-thread-list/gr-thread-list';
 import '../../../styles/shared-styles';
-import {GrReviewerSuggestionsProvider} from '../../../services/gr-reviewer-suggestions-provider/gr-reviewer-suggestions-provider';
-import {getAppContext} from '../../../services/app-context';
+import { GrReviewerSuggestionsProvider } from '../../../services/gr-reviewer-suggestions-provider/gr-reviewer-suggestions-provider';
+import { getAppContext } from '../../../services/app-context';
 import {
   ChangeStatus,
   DraftsAction,
@@ -34,9 +34,9 @@ import {
   removeServiceUsers,
   toReviewInput,
 } from '../../../utils/account-util';
-import {TargetElement} from '../../../api/plugin';
-import {isDefined, ParsedChangeInfo} from '../../../types/types';
-import {GrAccountList} from '../../shared/gr-account-list/gr-account-list';
+import { TargetElement } from '../../../api/plugin';
+import { isDefined, ParsedChangeInfo } from '../../../types/types';
+import { GrAccountList } from '../../shared/gr-account-list/gr-account-list';
 import {
   AccountId,
   AccountInfo,
@@ -59,10 +59,9 @@ import {
   isDraft,
   ChangeViewChangeInfo,
 } from '../../../types/common';
-import {GroupName} from '../../../api/rest-api';
-import {GrButton} from '../../shared/gr-button/gr-button';
-import {GrLabelScores} from '../gr-label-scores/gr-label-scores';
-import {GrLabelScoreRow} from '../gr-label-score-row/gr-label-score-row';
+import { GrButton } from '../../shared/gr-button/gr-button';
+import { GrLabelScores } from '../gr-label-scores/gr-label-scores';
+import { GrLabelScoreRow } from '../gr-label-score-row/gr-label-score-row';
 import {
   areSetsEqual,
   assertIsDefined,
@@ -75,13 +74,13 @@ import {
   isPatchsetLevel,
   isUnresolved,
 } from '../../../utils/comment-util';
-import {GrAccountChip} from '../../shared/gr-account-chip/gr-account-chip';
+import { GrAccountChip } from '../../shared/gr-account-chip/gr-account-chip';
 import {
   getApprovalInfo,
   getMaxAccounts,
   StandardLabels,
 } from '../../../utils/label-util';
-import {pluralize} from '../../../utils/string-util';
+import { pluralize } from '../../../utils/string-util';
 import {
   fireAlert,
   fireError,
@@ -95,44 +94,47 @@ import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-
 import {ErrorCallback} from '../../../api/rest';
 import {DelayedTask} from '../../../utils/async-util';
 import {Interaction, Timing} from '../../../constants/reporting';
+import { ErrorCallback } from '../../../api/rest';
+import { DelayedTask } from '../../../utils/async-util';
+import { Interaction, Timing } from '../../../constants/reporting';
 import {
   getMentionedReason,
   getReplyByReason,
 } from '../../../utils/attention-set-util';
-import {RestApiService} from '../../../services/gr-rest-api/gr-rest-api';
-import {resolve} from '../../../models/dependency';
-import {changeModelToken} from '../../../models/change/change-model';
-import {LabelNameToValuesMap, PatchSetNumber} from '../../../api/rest-api';
-import {css, html, PropertyValues, LitElement, nothing} from 'lit';
-import {sharedStyles} from '../../../styles/shared-styles';
-import {when} from 'lit/directives/when.js';
-import {classMap} from 'lit/directives/class-map.js';
+import { RestApiService } from '../../../services/gr-rest-api/gr-rest-api';
+import { resolve } from '../../../models/dependency';
+import { changeModelToken } from '../../../models/change/change-model';
+import { LabelNameToValuesMap, PatchSetNumber } from '../../../api/rest-api';
+import { css, html, PropertyValues, LitElement, nothing } from 'lit';
+import { sharedStyles } from '../../../styles/shared-styles';
+import { when } from 'lit/directives/when.js';
+import { classMap } from 'lit/directives/class-map.js';
 import {
   AddReviewerEvent,
   RemoveReviewerEvent,
   ValueChangedEvent,
 } from '../../../types/events';
-import {customElement, property, state, query} from 'lit/decorators.js';
-import {subscribe} from '../../lit/subscription-controller';
-import {configModelToken} from '../../../models/config/config-model';
-import {hasHumanReviewer} from '../../../utils/change-util';
-import {commentsModelToken} from '../../../models/comments/comments-model';
+import { customElement, property, state, query } from 'lit/decorators.js';
+import { subscribe } from '../../lit/subscription-controller';
+import { configModelToken } from '../../../models/config/config-model';
+import { hasHumanReviewer } from '../../../utils/change-util';
+import { commentsModelToken } from '../../../models/comments/comments-model';
 import {
   CommentEditingChangedDetail,
   GrComment,
 } from '../../shared/gr-comment/gr-comment';
-import {ShortcutController} from '../../lit/shortcut-controller';
-import {Key, Modifier, whenVisible} from '../../../utils/dom-util';
-import {GrThreadList} from '../gr-thread-list/gr-thread-list';
-import {userModelToken} from '../../../models/user/user-model';
-import {accountsModelToken} from '../../../models/accounts/accounts-model';
-import {pluginLoaderToken} from '../../shared/gr-js-api-interface/gr-plugin-loader';
-import {modalStyles} from '../../../styles/gr-modal-styles';
-import {ironAnnouncerRequestAvailability} from '../../polymer-util';
-import {GrReviewerUpdatesParser} from '../../shared/gr-rest-api-interface/gr-reviewer-updates-parser';
-import {formStyles} from '../../../styles/form-styles';
-import {navigationToken} from '../../core/gr-navigation/gr-navigation';
-import {getDocUrl} from '../../../utils/url-util';
+import { ShortcutController } from '../../lit/shortcut-controller';
+import { Key, Modifier, whenVisible } from '../../../utils/dom-util';
+import { GrThreadList } from '../gr-thread-list/gr-thread-list';
+import { userModelToken } from '../../../models/user/user-model';
+import { accountsModelToken } from '../../../models/accounts/accounts-model';
+import { pluginLoaderToken } from '../../shared/gr-js-api-interface/gr-plugin-loader';
+import { modalStyles } from '../../../styles/gr-modal-styles';
+import { ironAnnouncerRequestAvailability } from '../../polymer-util';
+import { GrReviewerUpdatesParser } from '../../shared/gr-rest-api-interface/gr-reviewer-updates-parser';
+import { formStyles } from '../../../styles/form-styles';
+import { navigationToken } from '../../core/gr-navigation/gr-navigation';
+import { getDocUrl } from '../../../utils/url-util';
 import {
   readJSONResponsePayload,
   ResponsePayload,
@@ -181,19 +183,19 @@ export class GrReplyDialog extends LitElement {
   private readonly getCommentsModel = resolve(this, commentsModelToken);
 
   // TODO: update type to only ParsedChangeInfo
-  @property({type: Object})
+  @property({ type: Object })
   change?: ParsedChangeInfo | ChangeInfo;
 
-  @property({type: Boolean})
+  @property({ type: Boolean })
   canBeStarted = false;
 
-  @property({type: Boolean, reflect: true})
+  @property({ type: Boolean, reflect: true })
   disabled = false;
 
   @state()
   draftCommentThreads: CommentThread[] = [];
 
-  @property({type: Object})
+  @property({ type: Object })
   permittedLabels?: LabelNameToValuesMap;
 
   @query('#patchsetLevelComment') patchsetLevelGrComment?: GrComment;
@@ -300,6 +302,15 @@ export class GrReplyDialog extends LitElement {
 
   @state()
   reviewerPendingConfirmation: SuggestedReviewerGroupInfo | null = null;
+
+  @state()
+  useSuggestedReviewers = true;
+
+  @state()
+  reviewerRecentHistoryWeight = 1;
+
+  @state()
+  reviewerContributionsWeight = 1;
 
   @state()
   savingComments = false;
@@ -613,6 +624,17 @@ export class GrReplyDialog extends LitElement {
           font-weight: var(--font-weight-bold);
           margin-right: var(--spacing-xs);
         }
+        .reviewerWeights {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-m);
+          margin-bottom: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--deemphasized-text-color);
+        }
+        .reviewerWeights input {
+          width: 40px;
+        }
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
         }
@@ -626,13 +648,13 @@ export class GrReplyDialog extends LitElement {
       this.filterReviewerSuggestionGenerator(false);
     this.filterCCSuggestion = this.filterReviewerSuggestionGenerator(true);
 
-    this.shortcuts.addLocal({key: Key.ESC}, () => this.cancel());
+    this.shortcuts.addLocal({ key: Key.ESC }, () => this.cancel());
     this.shortcuts.addLocal(
-      {key: Key.ENTER, modifiers: [Modifier.CTRL_KEY]},
+      { key: Key.ENTER, modifiers: [Modifier.CTRL_KEY] },
       () => this.submit()
     );
     this.shortcuts.addLocal(
-      {key: Key.ENTER, modifiers: [Modifier.META_KEY]},
+      { key: Key.ENTER, modifiers: [Modifier.META_KEY] },
       () => this.submit()
     );
 
@@ -663,10 +685,7 @@ export class GrReplyDialog extends LitElement {
     subscribe(
       this,
       () => this.getChangeModel().change$,
-      x => {
-        this.change = x;
-        this.loadInlineSuggestedReviewers();
-      }
+      x => (this.change = x)
     );
     subscribe(
       this,
@@ -705,9 +724,9 @@ export class GrReplyDialog extends LitElement {
       this,
       () => this.getCommentsModel().draftThreadsSaved$,
       threads =>
-        (this.draftCommentThreads = threads.filter(
-          t => !(isDraft(getFirstComment(t)) && isPatchsetLevel(t))
-        ))
+      (this.draftCommentThreads = threads.filter(
+        t => !(isDraft(getFirstComment(t)) && isPatchsetLevel(t))
+      ))
     );
   }
 
@@ -824,10 +843,10 @@ export class GrReplyDialog extends LitElement {
               .value=${this.change}
             ></gr-endpoint-param>
             ${when(
-              this.attentionExpanded,
-              () => this.renderAttentionDetailsSection(),
-              () => this.renderAttentionSummarySection()
-            )}
+      this.attentionExpanded,
+      () => this.renderAttentionDetailsSection(),
+      () => this.renderAttentionSummarySection()
+    )}
             <gr-endpoint-slot name="above-actions"></gr-endpoint-slot>
             ${this.renderActionsSection()}
           </gr-endpoint-decorator>
@@ -851,12 +870,12 @@ export class GrReplyDialog extends LitElement {
           .filter=${this.filterReviewerSuggestion}
           .pendingConfirmation=${this.reviewerPendingConfirmation}
           @pending-confirmation-changed=${this
-            .handleReviewersConfirmationChanged}
+        .handleReviewersConfirmationChanged}
           .placeholder=${'Add reviewer...'}
           @account-text-changed=${this.handleAccountTextEntry}
           .suggestionsProvider=${this.getReviewerSuggestionsProvider(
-            this.change
-          )}
+          this.change
+        )}
         >
         </gr-account-list>
         <gr-endpoint-slot name="right"></gr-endpoint-slot>
@@ -866,75 +885,109 @@ export class GrReplyDialog extends LitElement {
   }
 
   private renderSuggestedReviewersInline() {
-    const suggestions = this.inlineSuggestedReviewers;
+    const suggestions = this.computeSuggestedReviewersInline();
+    if (!suggestions.length) return nothing;
     return html`
       <div class="suggestedReviewers">
-        <div class="suggestedReviewersTitle">Suggested reviewers</div>
-        ${suggestions.length === 0
-          ? html`<span class="noSuggestedReviewers"
-              >no suggested reviewers</span
-            >`
-          : html`<ul class="suggestedReviewersList">
+        <div class="suggestedReviewersTitle">
+          <label>
+            <input
+              type="checkbox"
+              .checked=${this.useSuggestedReviewers}
+              @change=${this.handleUseSuggestedReviewersChanged}
+            />
+            Use suggested reviewers
+          </label>
+        </div>
+        <div class="reviewerWeights">
+          <span>Weights:</span>
+          <label
+            >Recent history
+            <input
+              type="number"
+              .value=${String(this.reviewerRecentHistoryWeight)}
+              min="0"
+              max="10"
+              @input=${this.handleRecentHistoryWeightInput}
+            />
+          </label>
+          <label
+            >Contributions
+            <input
+              type="number"
+              .value=${String(this.reviewerContributionsWeight)}
+              min="0"
+              max="10"
+              @input=${this.handleContributionsWeightInput}
+            />
+          </label>
+        </div>
+        ${when(
+      this.useSuggestedReviewers,
+      () => html`
+            <ul class="suggestedReviewersList">
               ${suggestions.map(
-                suggestion => html`<li class="suggestedReviewersItem">
-                  <gr-button
-                    link
-                    class="suggestedReviewerName"
-                    @click=${() =>
-                      this.handleSuggestedReviewerInlineClick(
-                        suggestion.account
-                      )}
-                  >
-                    ${suggestion.displayName}
-                  </gr-button>
-                  <span class="suggestedReviewerReason"
-                    >— ${suggestion.reason}</span
-                  >
-                </li>`
-              )}
-            </ul>`}
+        suggestion => html`<li class="suggestedReviewersItem">
+                    <gr-button
+                      link
+                      class="suggestedReviewerName"
+                      @click=${() =>
+            this.handleSuggestedReviewerInlineClick(
+              suggestion.account
+            )}
+                    >
+                      ${suggestion.displayName}
+                    </gr-button>
+                    <span class="suggestedReviewerReason"
+                      >— ${suggestion.reason}</span
+                    >
+                  </li>`
+      )}
+            </ul>
+          `
+    )}
       </div>
     `;
   }
 
-  private async loadInlineSuggestedReviewers() {
-    if (!this.change?._number) {
-      this.inlineSuggestedReviewers = [];
-      return;
-    }
-    const suggestions =
-      await this.restApiService.getChangeSuggestedReviewers(
-        this.change._number,
-        '',
-        throwingErrorCallback
-      );
-    if (suggestions && suggestions.length > 0) {
-      this.inlineSuggestedReviewers = suggestions.slice(0, 3).flatMap(s => {
-        if (!('account' in s) || !s.account) return [];
-        const account = s.account;
-        return [
-          {
-            account,
-            displayName:
-              account.name ?? account.email ?? `User ${account._account_id}`,
-            reason: 'suggested reviewer',
-          },
-        ];
-      });
-      return;
-    }
+  private handleUseSuggestedReviewersChanged(e: Event) {
+    if (!(e.target instanceof HTMLInputElement)) return;
+    this.useSuggestedReviewers = e.target.checked;
+  }
 
-    // Fallback: retrieve members of the Administrators group and use them as
-    // placeholder suggestions until the new algorithmic recommender is wired
-    // through the backend.
-    const adminMembers = await this.restApiService.getGroupMembers(
-      'Administrators' as GroupName
-    );
-    if (!adminMembers || adminMembers.length === 0) {
-      this.inlineSuggestedReviewers = [];
-      return;
+  private handleRecentHistoryWeightInput(e: Event) {
+    this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
+  }
+
+  private handleContributionsWeightInput(e: Event) {
+    this.reviewerContributionsWeight = this.parseWeightInput(e);
+  }
+
+  private parseWeightInput(e: Event) {
+    if (!(e.target instanceof HTMLInputElement)) return 1;
+    const parsed = Number(e.target.value);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.min(10, Math.max(0, Math.trunc(parsed)));
+  }
+
+  private computeSuggestedReviewersInline() {
+    if (!this.change) return [];
+    const accounts: AccountInfo[] = [];
+    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
+    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
+    reviewers.forEach(a => a && accounts.push(a));
+    if (accounts.length === 0) {
+      ccs.forEach(a => a && accounts.push(a));
+      if (this.change.owner) accounts.push(this.change.owner);
     }
-    this.inlineSuggestedReviewers = adminMembers.slice(0, 3).map(account => ({
+    const seen = new Set<number>();
+    const unique = accounts.filter(a => {
+      if (a._account_id == null) return false;
+      if (seen.has(a._account_id)) return false;
+      seen.add(a._account_id);
+      return true;
+    });
+    return unique.slice(0, 3).map(account => ({
       account,
       displayName:
         account.name ?? account.email ?? `User ${account._account_id}`,
@@ -1048,13 +1101,13 @@ export class GrReplyDialog extends LitElement {
         .comment=${this.patchsetLevelComment}
         .comments=${[this.patchsetLevelComment]}
         @comment-unresolved-changed=${(e: ValueChangedEvent<boolean>) => {
-          this.patchsetLevelDraftIsResolved = !e.detail.value;
-        }}
+        this.patchsetLevelDraftIsResolved = !e.detail.value;
+      }}
         @comment-text-changed=${(e: ValueChangedEvent<string>) => {
-          this.patchsetLevelDraftMessage = e.detail.value;
-          // See `addReplyTextChangedCallback` in `ChangeReplyPluginApi`.
-          fire(e.currentTarget as HTMLElement, 'value-changed', e.detail);
-        }}
+        this.patchsetLevelDraftMessage = e.detail.value;
+        // See `addReplyTextChangedCallback` in `ChangeReplyPluginApi`.
+        fire(e.currentTarget as HTMLElement, 'value-changed', e.detail);
+      }}
         .messagePlaceholder=${this.messagePlaceholder}
         hide-header
         permanent-editing-mode
@@ -1067,11 +1120,11 @@ export class GrReplyDialog extends LitElement {
     return html`
       <div
         class=${classMap({
-          patchsetLevelContainer: true,
-          [this.getUnresolvedPatchsetLevelClass(
-            this.patchsetLevelDraftIsResolved
-          )]: true,
-        })}
+      patchsetLevelContainer: true,
+      [this.getUnresolvedPatchsetLevelClass(
+        this.patchsetLevelDraftIsResolved
+      )]: true,
+    })}
       >
         <gr-endpoint-decorator name="reply-text">
           ${this.renderPatchsetLevelComment()}
@@ -1099,12 +1152,12 @@ export class GrReplyDialog extends LitElement {
           >
         </div>
         ${when(
-          this.includeComments,
-          () => html`
+      this.includeComments,
+      () => html`
             <gr-thread-list id="commentList" .threads=${threads} hide-dropdown>
             </gr-thread-list>
           `
-        )}
+    )}
         <span
           id="savingLabel"
           class=${this.computeSavingLabelClass(this.savingComments)}
@@ -1121,15 +1174,15 @@ export class GrReplyDialog extends LitElement {
         <div class="attentionSummary">
           <div>
             ${when(
-              this.computeShowNoAttentionUpdate(),
-              () => html` <span>${this.computeDoNotUpdateMessage()}</span> `
-            )}
+      this.computeShowNoAttentionUpdate(),
+      () => html` <span>${this.computeDoNotUpdateMessage()}</span> `
+    )}
             ${when(
-              !this.computeShowNoAttentionUpdate(),
-              () => html`
+      !this.computeShowNoAttentionUpdate(),
+      () => html`
                 <span>Bring to attention of</span>
                 ${this.computeNewAttentionAccounts().map(
-                  account => html`
+        account => html`
                     <gr-account-label
                       .account=${account}
                       .forceAttention=${this.computeHasNewAttention(account)}
@@ -1139,9 +1192,9 @@ export class GrReplyDialog extends LitElement {
                       @click=${this.handleAttentionClick}
                     ></gr-account-label>
                   `
-                )}
+      )}
               `
-            )}
+    )}
           </div>
           <div>
             ${this.renderModifyAttentionSetButton()}
@@ -1222,8 +1275,8 @@ export class GrReplyDialog extends LitElement {
           </div>
         </div>
         ${when(
-          this.uploader,
-          () => html`
+      this.uploader,
+      () => html`
             <div class="peopleList">
               <div class="peopleListLabel">Uploader</div>
               <div class="peopleListValues">
@@ -1239,12 +1292,12 @@ export class GrReplyDialog extends LitElement {
               </div>
             </div>
           `
-        )}
+    )}
         <div class="peopleList">
           <div class="peopleListLabel">Reviewers</div>
           <div class="peopleListValues">
             ${removeServiceUsers(this.reviewers).map(
-              account => html`
+      account => html`
                 <gr-account-label
                   .account=${account}
                   ?forceAttention=${this.computeHasNewAttention(account)}
@@ -1255,18 +1308,18 @@ export class GrReplyDialog extends LitElement {
                 >
                 </gr-account-label>
               `
-            )}
+    )}
           </div>
         </div>
 
         ${when(
-          this.attentionCcsCount,
-          () => html`
+      this.attentionCcsCount,
+      () => html`
             <div class="peopleList">
               <div class="peopleListLabel">CC</div>
               <div class="peopleListValues">
                 ${removeServiceUsers(this.ccs).map(
-                  account => html`
+        account => html`
                     <gr-account-label
                       .account=${account}
                       ?forceAttention=${this.computeHasNewAttention(account)}
@@ -1277,20 +1330,20 @@ export class GrReplyDialog extends LitElement {
                     >
                     </gr-account-label>
                   `
-                )}
+      )}
               </div>
             </div>
           `
-        )}
+    )}
         ${when(
-          this.computeShowAttentionTip(3),
-          () => html`
+      this.computeShowAttentionTip(3),
+      () => html`
             <div class="attentionTip">
               <gr-icon icon="lightbulb"></gr-icon>
               Please be mindful of requiring attention from too many users.
             </div>
           `
-        )}
+    )}
       </section>
     `;
   }
@@ -1300,22 +1353,22 @@ export class GrReplyDialog extends LitElement {
       <section class="actions">
         <div class="left">
           ${when(
-            this.knownLatestState === LatestPatchState.CHECKING,
-            () => html`
+      this.knownLatestState === LatestPatchState.CHECKING,
+      () => html`
               <span id="checkingStatusLabel">
                 Checking whether patch ${this.latestPatchNum} is latest...
               </span>
             `
-          )}
+    )}
           ${when(
-            this.knownLatestState === LatestPatchState.NOT_LATEST,
-            () => html`
+      this.knownLatestState === LatestPatchState.NOT_LATEST,
+      () => html`
               <span id="notLatestLabel">
                 ${this.computePatchSetWarning()}
                 <gr-button link @click=${this._reload}>Reload</gr-button>
               </span>
             `
-          )}
+    )}
         </div>
         <div class="right">
           <gr-button
@@ -1326,8 +1379,8 @@ export class GrReplyDialog extends LitElement {
             >Cancel</gr-button
           >
           ${when(
-            this.canBeStarted,
-            () => html`
+      this.canBeStarted,
+      () => html`
               <!-- Use 'Send' here as the change may only about reviewers / ccs
             and when this button is visible, the next button will always
             be 'Start review' -->
@@ -1335,20 +1388,20 @@ export class GrReplyDialog extends LitElement {
                 <gr-button
                   link
                   ?disabled=${this.knownLatestState ===
-                  LatestPatchState.NOT_LATEST}
+        LatestPatchState.NOT_LATEST}
                   class="action save"
                   @click=${this.saveClickHandler}
                   >Send As WIP</gr-button
                 >
               </gr-tooltip-content>
             `
-          )}
+    )}
           <gr-tooltip-content
             has-tooltip
             title=${this.computeSendButtonTooltip(
-              this.canBeStarted,
-              this.commentEditing
-            )}
+      this.canBeStarted,
+      this.commentEditing
+    )}
           >
             <gr-button
               id="sendButton"
@@ -1357,8 +1410,8 @@ export class GrReplyDialog extends LitElement {
               class="action send"
               @click=${this.sendClickHandler}
               >${this.canBeStarted
-                ? ButtonLabels.SEND + ' and ' + ButtonLabels.START_REVIEW
-                : ButtonLabels.SEND}
+        ? ButtonLabels.SEND + ' and ' + ButtonLabels.START_REVIEW
+        : ButtonLabels.SEND}
             </gr-button>
           </gr-tooltip-content>
         </div>
@@ -1549,12 +1602,12 @@ export class GrReplyDialog extends LitElement {
           user,
           this.serverConfig
         ) ?? '';
-      reviewInput.add_to_attention_set.push({user: getUserId(user), reason});
+      reviewInput.add_to_attention_set.push({ user: getUserId(user), reason });
     }
     reviewInput.remove_from_attention_set = [];
     for (const user of this.currentAttentionSet) {
       if (!this.newAttentionSet.has(user)) {
-        reviewInput.remove_from_attention_set.push({user, reason});
+        reviewInput.remove_from_attention_set.push({ user, reason });
       }
     }
     this.reportAttentionSetChanges(
@@ -1949,7 +2002,7 @@ export class GrReplyDialog extends LitElement {
       'computeDoNotUpdateMessage',
       new Error(
         'computeDoNotUpdateMessage()' +
-          'should not be called when users were added to the attention set.'
+        'should not be called when users were added to the attention set.'
       )
     );
     return '';
@@ -2290,7 +2343,7 @@ export class GrReplyDialog extends LitElement {
       const role = removedId === ownerId ? 'OWNER' : '_REVIEWER';
       actions.push('REMOVE' + self + role);
     }
-    this.reporting.reportInteraction('attention-set-actions', {actions});
+    this.reporting.reportInteraction('attention-set-actions', { actions });
   }
 }
 

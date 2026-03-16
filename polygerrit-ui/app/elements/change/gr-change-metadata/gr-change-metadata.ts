@@ -26,7 +26,7 @@ import {
   InheritedBooleanInfoConfiguredValue,
   SubmitType,
 } from '../../../constants/constants';
-import {changeIsOpen, isOwner} from '../../../utils/change-util';
+import { changeIsOpen, isOwner } from '../../../utils/change-util';
 import {
   AccountDetailInfo,
   AccountInfo,
@@ -50,10 +50,10 @@ import {
   ServerInfo,
   WebLinkInfo,
 } from '../../../types/common';
-import {assertIsDefined, assertNever, unique} from '../../../utils/common-util';
-import {GrEditableLabel} from '../../shared/gr-editable-label/gr-editable-label';
-import {GrLinkedChip} from '../../shared/gr-linked-chip/gr-linked-chip';
-import {getAppContext} from '../../../services/app-context';
+import { assertIsDefined, assertNever, unique } from '../../../utils/common-util';
+import { GrEditableLabel } from '../../shared/gr-editable-label/gr-editable-label';
+import { GrLinkedChip } from '../../shared/gr-linked-chip/gr-linked-chip';
+import { getAppContext } from '../../../services/app-context';
 import {
   Metadata,
   isSectionSet,
@@ -135,7 +135,7 @@ export class GrChangeMetadata extends LitElement {
   // TODO: Convert to @state. That requires the change model to keep track of
   // current revision actions. Then we can also get rid of the
   // `revision-actions-changed` event.
-  @property({type: Boolean}) parentIsCurrent?: boolean;
+  @property({ type: Boolean }) parentIsCurrent?: boolean;
 
   @state() change?: ParsedChangeInfo;
 
@@ -344,6 +344,16 @@ export class GrChangeMetadata extends LitElement {
           font-weight: var(--font-weight-bold);
           margin-right: var(--spacing-xs);
         }
+        .reviewerWeights {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-xs);
+          margin-bottom: var(--spacing-s);
+          font-size: var(--font-size-small);
+        }
+        .reviewerWeights input {
+          width: 40px;
+        }
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
         }
@@ -370,7 +380,7 @@ export class GrChangeMetadata extends LitElement {
       <gr-endpoint-decorator name="change-metadata-item">
         <gr-endpoint-param
           name="labels"
-          .value=${{...this.change?.labels}}
+          .value=${{ ...this.change?.labels }}
         ></gr-endpoint-param>
         <gr-endpoint-param
           name="change"
@@ -458,8 +468,8 @@ export class GrChangeMetadata extends LitElement {
           ></gr-vote-chip>
         </gr-account-chip>
         ${when(
-          this.pushCertificateValidation,
-          () => html`<gr-tooltip-content
+      this.pushCertificateValidation,
+      () => html`<gr-tooltip-content
             has-tooltip
             title=${this.pushCertificateValidation!.message}
           >
@@ -468,7 +478,7 @@ export class GrChangeMetadata extends LitElement {
               class="icon ${this.pushCertificateValidation!.class}"
             ></gr-icon>
           </gr-tooltip-content>`
-        )}
+    )}
       </span>
     </section>`;
   }
@@ -511,20 +521,20 @@ export class GrChangeMetadata extends LitElement {
           ></gr-vote-chip>
         </gr-account-chip>
         ${when(
-          this.editMode &&
-            (role === ChangeRole.AUTHOR || role === ChangeRole.COMMITTER),
-          () => html`
+      this.editMode &&
+      (role === ChangeRole.AUTHOR || role === ChangeRole.COMMITTER),
+      () => html`
             <gr-editable-label
               id="${role}-edit-label"
               placeholder="Update ${name}"
               @changed=${(e: CustomEvent<string>) =>
-                this.handleIdentityChanged(e, role)}
+          this.handleIdentityChanged(e, role)}
               showAsEditPencil
               autocomplete
               .query=${(text: string) => this.getIdentitySuggestions(text)}
             ></gr-editable-label>
           `
-        )}
+    )}
       </span>
     </section>`;
   }
@@ -532,15 +542,22 @@ export class GrChangeMetadata extends LitElement {
   private renderSuggestedReviewers() {
     const suggestions = this.suggestedReviewers;
     return html`<section class="suggestedReviewers">
-      <span class="title">Suggested reviewers</span>
+      <span class="title">
+        Suggested reviewers
+        <br/><label><input type="checkbox" checked /> Use</label>
+      </span>
       <span class="value">
+        <div class="reviewerWeights">
+          <label>Recent history weight: <input type="number" value="1" min="0" max="10"/></label>
+          <label>Contributions weight: <input type="number" value="1" min="0" max="10"/></label>
+        </div>
         ${suggestions.length === 0
           ? html`<span class="noSuggestedReviewers"
               >no suggested reviewers</span
             >`
           : html`<ul class="suggestedReviewersList">
               ${suggestions.map(
-                suggestion => html`<li class="suggestedReviewersItem">
+          suggestion => html`<li class="suggestedReviewersItem">
                   <gr-button
                     link
                     class="suggestedReviewerName"
@@ -552,7 +569,7 @@ export class GrChangeMetadata extends LitElement {
                     >— suggested reviewer</span
                   >
                 </li>`
-              )}
+        )}
             </ul>`}
       </span>
     </section>`;
@@ -592,7 +609,7 @@ export class GrChangeMetadata extends LitElement {
 
   private handleSuggestedReviewerClick() {
     fire(this, 'show-reply-dialog', {
-      value: {reviewersOnly: true, ccsOnly: false},
+      value: { reviewersOnly: true, ccsOnly: false },
     });
   }
 
@@ -698,7 +715,7 @@ export class GrChangeMetadata extends LitElement {
       <span class="value">
         <ol class=${this.computeParentListClass()}>
           ${this.currentParents.map(
-            parent => html` <li>
+      parent => html` <li>
               <gr-commit-info .commitInfo=${parent}></gr-commit-info>
               <gr-tooltip-content
                 id="parentNotCurrentMessage"
@@ -707,7 +724,7 @@ export class GrChangeMetadata extends LitElement {
                 .title=${this.notCurrentMessage}
               ></gr-tooltip-content>
             </li>`
-          )}
+    )}
         </ol>
       </span>
     </section>`;
@@ -721,9 +738,9 @@ export class GrChangeMetadata extends LitElement {
       <span class="value">
         <gr-commit-info
           .commitInfo=${this.computeMergedCommitInfo(
-            this.change?.current_revision,
-            this.change?.revisions
-          )}
+      this.change?.current_revision,
+      this.change?.revisions
+    )}
         ></gr-commit-info>
       </span>
     </section>`;
@@ -754,19 +771,19 @@ export class GrChangeMetadata extends LitElement {
       <span class="title">Topic</span>
       <span class="value">
         ${when(
-          this.showTopicChip(),
-          () => html` <gr-linked-chip
+      this.showTopicChip(),
+      () => html` <gr-linked-chip
             .text=${this.change?.topic}
             limit="40"
-            href=${createSearchUrl({topic: this.change!.topic!})}
+            href=${createSearchUrl({ topic: this.change!.topic! })}
             ?removable=${!this.topicReadOnly}
             @remove=${this.handleTopicRemoved}
           ></gr-linked-chip>`
-        )}
+    )}
         ${when(
-          this.showAddTopic(),
-          () =>
-            html` <gr-editable-label
+      this.showAddTopic(),
+      () =>
+        html` <gr-editable-label
               class="topicEditableLabel"
               labelText="Set topic"
               .confirmLabel=${'Set Topic'}
@@ -779,7 +796,7 @@ export class GrChangeMetadata extends LitElement {
               autocomplete
               .query=${this.queryTopic}
             ></gr-editable-label>`
-        )}
+    )}
       </span>
     </section>`;
   }
@@ -793,14 +810,14 @@ export class GrChangeMetadata extends LitElement {
       <span class="value">
         <a
           href=${this.computeCherryPickOfUrl(
-            this.change?.cherry_pick_of_change,
-            this.change?.cherry_pick_of_patch_set,
-            this.change?.project
-          )}
+      this.change?.cherry_pick_of_change,
+      this.change?.cherry_pick_of_patch_set,
+      this.change?.project
+    )}
         >
           <gr-limited-text
             text="${this.change?.cherry_pick_of_change},${this.change
-              ?.cherry_pick_of_patch_set}"
+        ?.cherry_pick_of_patch_set}"
             limit="40"
           >
           </gr-limited-text>
@@ -816,10 +833,10 @@ export class GrChangeMetadata extends LitElement {
       <span class="value">
         <a
           href=${createChangeUrl({
-            changeNum: this.change.revert_of,
-            repo: this.change.project,
-            usp: 'metadata',
-          })}
+      changeNum: this.change.revert_of,
+      repo: this.change.project,
+      usp: 'metadata',
+    })}
           >${this.change.revert_of}</a
         >
       </span>
@@ -843,7 +860,7 @@ export class GrChangeMetadata extends LitElement {
       <span class="title">Hashtags</span>
       <span class="value">
         ${(this.change?.hashtags ?? []).map(
-          hashtag => html`<gr-linked-chip
+      hashtag => html`<gr-linked-chip
             class="hashtagChip"
             .text=${hashtag}
             href=${this.computeHashtagUrl(hashtag)}
@@ -852,10 +869,10 @@ export class GrChangeMetadata extends LitElement {
             limit="40"
           >
           </gr-linked-chip>`
-        )}
+    )}
         ${when(
-          !this.hashtagReadOnly,
-          () => html`
+      !this.hashtagReadOnly,
+      () => html`
             <gr-editable-label
               uppercase
               labelText="Add a hashtag"
@@ -867,7 +884,7 @@ export class GrChangeMetadata extends LitElement {
               .query=${this.queryHashtag}
             ></gr-editable-label>
           `
-        )}
+    )}
       </span>
     </section>`;
   }
@@ -1097,7 +1114,7 @@ export class GrChangeMetadata extends LitElement {
         InheritedBooleanInfoConfiguredValue.INHERIT &&
         enableSignedPush.inherited_value) ||
       enableSignedPush.configured_value ===
-        InheritedBooleanInfoConfiguredValue.TRUE
+      InheritedBooleanInfoConfiguredValue.TRUE
     );
   }
 
@@ -1110,18 +1127,18 @@ export class GrChangeMetadata extends LitElement {
   }
 
   private computeShowRepoBranchTogether() {
-    const {project, branch} = this.change!;
+    const { project, branch } = this.change!;
     return !!project && !!branch && project.length + branch.length < 40;
   }
 
   private computeProjectUrl(project?: RepoName) {
     if (!project) return '';
-    return createSearchUrl({repo: project});
+    return createSearchUrl({ repo: project });
   }
 
   private computeBranchUrl(repo?: RepoName, branch?: BranchName) {
     if (!repo || !branch || !this.change || !this.change.status) return '';
-    return createSearchUrl({branch, repo});
+    return createSearchUrl({ branch, repo });
   }
 
   private computeCherryPickOfUrl(
@@ -1141,7 +1158,7 @@ export class GrChangeMetadata extends LitElement {
   }
 
   private computeHashtagUrl(hashtag: Hashtag) {
-    return createSearchUrl({hashtag, statuses: ['open', 'merged']});
+    return createSearchUrl({ hashtag, statuses: ['open', 'merged'] });
   }
 
   private async handleTopicRemoved(e: Event) {
@@ -1203,7 +1220,7 @@ export class GrChangeMetadata extends LitElement {
   // private but used in test
   computeMergedCommitInfo(
     currentrevision?: CommitId,
-    revisions?: {[revisionId: string]: RevisionInfo | EditRevisionInfo}
+    revisions?: { [revisionId: string]: RevisionInfo | EditRevisionInfo }
   ): CommitInfo | undefined {
     if (!currentrevision || !revisions) return;
     const rev = revisions[currentrevision];
@@ -1230,7 +1247,7 @@ export class GrChangeMetadata extends LitElement {
 
   // private but used in test
   computeRevertCommit(): CommitInfo | undefined {
-    const {revertedChange, change} = this;
+    const { revertedChange, change } = this;
     if (revertedChange?.current_revision && revertedChange?.revisions) {
       // TODO(TS): Fix typing
       return {
@@ -1302,7 +1319,7 @@ export class GrChangeMetadata extends LitElement {
 
   // private but used in test
   computeParents(): ParentCommitInfo[] {
-    const {change, revision} = this;
+    const { change, revision } = this;
     if (!revision?.commit) {
       if (!change?.current_revision) return [];
       const newRevision = change.revisions[change.current_revision];
@@ -1347,7 +1364,7 @@ export class GrChangeMetadata extends LitElement {
           .filter(isDefined)
           .filter(unique)
           .map(topic => {
-            return {name: topic, value: topic};
+            return { name: topic, value: topic };
           })
       );
   }
@@ -1367,7 +1384,7 @@ export class GrChangeMetadata extends LitElement {
             inputReg ? inputReg.test(hashtag) : hashtag.includes(input)
           )
           .map(hashtag => {
-            return {name: hashtag, value: hashtag};
+            return { name: hashtag, value: hashtag };
           })
       );
   }
@@ -1385,7 +1402,7 @@ export class GrChangeMetadata extends LitElement {
       account.secondary_emails && emails.push(...account.secondary_emails);
       emails.forEach(email => {
         const identity = name + ' ' + accountEmail(email);
-        identitySuggestions.push({name: identity});
+        identitySuggestions.push({ name: identity });
       });
     });
     return identitySuggestions;
