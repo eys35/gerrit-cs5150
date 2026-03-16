@@ -59,6 +59,7 @@ import {
   isDraft,
   ChangeViewChangeInfo,
 } from '../../../types/common';
+import {GroupName} from '../../../api/rest-api';
 import {GrButton} from '../../shared/gr-button/gr-button';
 import {GrLabelScores} from '../gr-label-scores/gr-label-scores';
 import {GrLabelScoreRow} from '../gr-label-score-row/gr-label-score-row';
@@ -90,6 +91,7 @@ import {
   fireServerError,
   fireReload,
 } from '../../../utils/event-util';
+import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
 import {ErrorCallback} from '../../../api/rest';
 import {DelayedTask} from '../../../utils/async-util';
 import {Interaction, Timing} from '../../../constants/reporting';
@@ -345,6 +347,13 @@ export class GrReplyDialog extends LitElement {
 
   @state()
   isOwner = false;
+
+  @state()
+  private inlineSuggestedReviewers: {
+    account: AccountInfo;
+    displayName: string;
+    reason: string;
+  }[] = [];
 
   private readonly restApiService: RestApiService =
     getAppContext().restApiService;
@@ -654,7 +663,10 @@ export class GrReplyDialog extends LitElement {
     subscribe(
       this,
       () => this.getChangeModel().change$,
-      x => (this.change = x)
+      x => {
+        this.change = x;
+        this.loadInlineSuggestedReviewers();
+      }
     );
     subscribe(
       this,
@@ -854,55 +866,82 @@ export class GrReplyDialog extends LitElement {
   }
 
   private renderSuggestedReviewersInline() {
-    const suggestions = this.computeSuggestedReviewersInline();
-    if (!suggestions.length) return nothing;
+    const suggestions = this.inlineSuggestedReviewers;
     return html`
       <div class="suggestedReviewers">
         <div class="suggestedReviewersTitle">Suggested reviewers</div>
-        <ul class="suggestedReviewersList">
-          ${suggestions.map(
-            suggestion => html`<li class="suggestedReviewersItem">
-              <gr-button
-                link
-                class="suggestedReviewerName"
-                @click=${() =>
-                  this.handleSuggestedReviewerInlineClick(suggestion.account)}
-              >
-                ${suggestion.displayName}
-              </gr-button>
-              <span class="suggestedReviewerReason"
-                >— ${suggestion.reason}</span
-              >
-            </li>`
-          )}
-        </ul>
+        ${suggestions.length === 0
+          ? html`<span class="noSuggestedReviewers"
+              >no suggested reviewers</span
+            >`
+          : html`<ul class="suggestedReviewersList">
+              ${suggestions.map(
+                suggestion => html`<li class="suggestedReviewersItem">
+                  <gr-button
+                    link
+                    class="suggestedReviewerName"
+                    @click=${() =>
+                      this.handleSuggestedReviewerInlineClick(
+                        suggestion.account
+                      )}
+                  >
+                    ${suggestion.displayName}
+                  </gr-button>
+                  <span class="suggestedReviewerReason"
+                    >— ${suggestion.reason}</span
+                  >
+                </li>`
+              )}
+            </ul>`}
       </div>
     `;
   }
 
-  private computeSuggestedReviewersInline() {
-    if (!this.change) return [];
-    const accounts: AccountInfo[] = [];
-    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
-    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
-    reviewers.forEach(a => a && accounts.push(a));
-    if (accounts.length === 0) {
-      ccs.forEach(a => a && accounts.push(a));
-      if (this.change.owner) accounts.push(this.change.owner);
+  private async loadInlineSuggestedReviewers() {
+    if (!this.change?._number) {
+      this.inlineSuggestedReviewers = [];
+      return;
     }
-    const seen = new Set<number>();
-    const unique = accounts.filter(a => {
-      if (a._account_id == null) return false;
-      if (seen.has(a._account_id)) return false;
-      seen.add(a._account_id);
-      return true;
-    });
-    return unique.slice(0, 3).map(account => ({
+    const suggestions =
+      await this.restApiService.getChangeSuggestedReviewers(
+        this.change._number,
+        '',
+        throwingErrorCallback
+      );
+    if (suggestions && suggestions.length > 0) {
+      this.inlineSuggestedReviewers = suggestions.slice(0, 3).flatMap(s => {
+        if (!('account' in s) || !s.account) return [];
+        const account = s.account;
+        return [
+          {
+            account,
+            displayName:
+              account.name ?? account.email ?? `User ${account._account_id}`,
+            reason: 'suggested reviewer',
+          },
+        ];
+      });
+      return;
+    }
+
+    // Fallback: retrieve members of the Administrators group and use them as
+    // placeholder suggestions until the new algorithmic recommender is wired
+    // through the backend.
+    const adminMembers = await this.restApiService.getGroupMembers(
+      'Administrators' as GroupName
+    );
+    if (!adminMembers || adminMembers.length === 0) {
+      this.inlineSuggestedReviewers = [];
+      return;
+    }
+    this.inlineSuggestedReviewers = adminMembers.slice(0, 3).map(account => ({
       account,
-      displayName: account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'suggested based on this change',
+      displayName:
+        account.name ?? account.email ?? `User ${account._account_id}`,
+      reason: 'suggested reviewer',
     }));
   }
+  
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
     if (!this.reviewersList) return;
