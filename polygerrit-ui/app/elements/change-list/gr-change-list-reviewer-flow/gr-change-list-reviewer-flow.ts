@@ -151,30 +151,6 @@ export class GrChangeListReviewerFlow extends LitElement {
         .confirmation-buttons {
           margin-top: var(--spacing-l);
         }
-        .suggestedReviewers {
-          margin-top: var(--spacing-s);
-          grid-column: 1 / span 2;
-        }
-        .suggestedReviewersTitle {
-          color: var(--deemphasized-text-color);
-          font-size: var(--font-size-small);
-          margin-bottom: var(--spacing-xs);
-        }
-        .suggestedReviewersList {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-        }
-        .suggestedReviewersItem {
-          margin-bottom: var(--spacing-xxs);
-        }
-        .suggestedReviewerName {
-          font-weight: var(--font-weight-bold);
-          margin-right: var(--spacing-xs);
-        }
-        .suggestedReviewerReason {
-          color: var(--deemphasized-text-color);
-        }
       `,
     ];
   }
@@ -241,7 +217,6 @@ export class GrChangeListReviewerFlow extends LitElement {
             )}
             <span>CC</span>
             ${this.renderAccountList(ReviewerState.CC, 'cc-list', 'Add CC')}
-            ${this.renderSuggestedReviewersBulk()}
           </div>
           ${this.renderAnyOverwriteWarnings()} ${this.renderErrors()}
         </div>
@@ -279,87 +254,6 @@ export class GrChangeListReviewerFlow extends LitElement {
       </gr-account-list>
       ${this.renderConfirmationDialog(reviewerState)}
     `;
-  }
-
-  private renderSuggestedReviewersBulk() {
-    const suggestions = this.computeSuggestedReviewersBulk();
-    if (!suggestions.length) return nothing;
-    return html`
-      <div class="suggestedReviewers">
-        <div class="suggestedReviewersTitle">Suggested reviewers</div>
-        <ul class="suggestedReviewersList">
-          ${suggestions.map(
-            s => html`<li class="suggestedReviewersItem">
-              <gr-button
-                link
-                class="suggestedReviewerName"
-                @click=${() => this.handleSuggestedReviewerBulkClick(s.account)}
-              >
-                ${getDisplayName(this.serverConfig, s.account)}
-              </gr-button>
-              <span class="suggestedReviewerReason"
-                >— ${s.reason}</span
-              >
-            </li>`
-          )}
-        </ul>
-      </div>
-    `;
-  }
-
-  private computeSuggestedReviewersBulk(): {account: AccountInfo; reason: string}[] {
-    if (!this.selectedChanges.length) return [];
-    // Count how often each prior reviewer appears across selected changes.
-    const counts = new Map<number, {account: AccountInfo; count: number}>();
-    for (const change of this.selectedChanges) {
-      const reviewers = change.reviewers[ReviewerState.REVIEWER] ?? [];
-      for (const r of reviewers) {
-        if (!r._account_id) continue;
-        const existing = counts.get(r._account_id);
-        if (existing) {
-          existing.count += 1;
-        } else {
-          counts.set(r._account_id, {account: r, count: 1});
-        }
-      }
-    }
-    if (!counts.size) return [];
-
-    const currentReviewers =
-      this.updatedAccountsByReviewerState.get(ReviewerState.REVIEWER) ?? [];
-    const currentCcs =
-      this.updatedAccountsByReviewerState.get(ReviewerState.CC) ?? [];
-
-    const takenIds = new Set(
-      [...currentReviewers, ...currentCcs]
-        .map(a => getUserId(a))
-        .filter(id => id !== undefined) as number[]
-    );
-
-    const candidates = [...counts.values()]
-      .filter(c => !takenIds.has(c.account._account_id!))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
-
-    return candidates.map(c => ({
-      account: c.account,
-      reason:
-        c.count > 1
-          ? `reviewed ${c.count} selected changes`
-          : 'reviewed one selected change',
-    }));
-  }
-
-  private handleSuggestedReviewerBulkClick(account: AccountInfo) {
-    const reviewers =
-      this.updatedAccountsByReviewerState.get(ReviewerState.REVIEWER) ?? [];
-    const id = getUserId(account);
-    if (id && reviewers.some(a => getUserId(a) === id)) return;
-    this.updatedAccountsByReviewerState.set(ReviewerState.REVIEWER, [
-      ...reviewers,
-      account,
-    ]);
-    this.requestUpdate();
   }
 
   private renderConfirmationDialog(reviewerState: ReviewerState) {

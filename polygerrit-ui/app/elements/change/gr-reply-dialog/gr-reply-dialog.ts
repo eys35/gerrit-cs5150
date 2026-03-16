@@ -881,29 +881,31 @@ export class GrReplyDialog extends LitElement {
   }
 
   private computeSuggestedReviewersInline() {
-    if (!this.change || !this.change.reviewers) return [];
-    // Start from prior reviewers on this change.
-    const priorReviewers = (this.change.reviewers.REVIEWER ?? []) as AccountInfo[];
-    if (!priorReviewers.length) return [];
+    if (!this.change) return [];
+    const accounts: AccountInfo[] = [];
+    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
+    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
+    reviewers.forEach(a => a && accounts.push(a));
+    if (accounts.length === 0) {
+      ccs.forEach(a => a && accounts.push(a));
+      if (this.change.owner) accounts.push(this.change.owner);
+    }
     const seen = new Set<number>();
-    const candidates = priorReviewers.filter(account => {
-      if (account._account_id == null) return false;
-      if (seen.has(account._account_id)) return false;
-      if (this.isAlreadyReviewerOrCC(account)) return false;
-      seen.add(account._account_id);
+    const unique = accounts.filter(a => {
+      if (a._account_id == null) return false;
+      if (seen.has(a._account_id)) return false;
+      seen.add(a._account_id);
       return true;
     });
-    return candidates.slice(0, 3).map(account => ({
+    return unique.slice(0, 3).map(account => ({
       account,
       displayName: account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'reviewed this change previously',
+      reason: 'suggested based on this change',
     }));
   }
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
     if (!this.reviewersList) return;
-    // Do not add duplicates.
-    if (this.isAlreadyReviewerOrCC(account)) return;
     this.reviewersList.addAccountItem({
       account,
       count: 1,
