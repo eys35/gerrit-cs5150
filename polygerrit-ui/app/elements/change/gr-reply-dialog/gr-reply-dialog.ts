@@ -90,13 +90,10 @@ import {
   fireServerError,
   fireReload,
 } from '../../../utils/event-util';
-import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
+
 import {ErrorCallback} from '../../../api/rest';
 import {DelayedTask} from '../../../utils/async-util';
 import {Interaction, Timing} from '../../../constants/reporting';
-import { ErrorCallback } from '../../../api/rest';
-import { DelayedTask } from '../../../utils/async-util';
-import { Interaction, Timing } from '../../../constants/reporting';
 import {
   getMentionedReason,
   getReplyByReason,
@@ -358,13 +355,6 @@ export class GrReplyDialog extends LitElement {
 
   @state()
   isOwner = false;
-
-  @state()
-  private inlineSuggestedReviewers: {
-    account: AccountInfo;
-    displayName: string;
-    reason: string;
-  }[] = [];
 
   private readonly restApiService: RestApiService =
     getAppContext().restApiService;
