@@ -584,6 +584,29 @@ export class GrReplyDialog extends LitElement {
           margin-right: var(--spacing-m);
           color: var(--info-foreground);
         }
+        .suggestedReviewers {
+          margin-top: var(--spacing-s);
+        }
+        .suggestedReviewersTitle {
+          color: var(--deemphasized-text-color);
+          font-size: var(--font-size-small);
+          margin-bottom: var(--spacing-xs);
+        }
+        .suggestedReviewersList {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+        .suggestedReviewersItem {
+          margin-bottom: var(--spacing-xxs);
+        }
+        .suggestedReviewerName {
+          font-weight: var(--font-weight-bold);
+          margin-right: var(--spacing-xs);
+        }
+        .suggestedReviewerReason {
+          color: var(--deemphasized-text-color);
+        }
       `,
     ];
   }
@@ -826,7 +849,68 @@ export class GrReplyDialog extends LitElement {
         </gr-account-list>
         <gr-endpoint-slot name="right"></gr-endpoint-slot>
       </div>
+      ${this.renderSuggestedReviewersInline()}
     `;
+  }
+
+  private renderSuggestedReviewersInline() {
+    const suggestions = this.computeSuggestedReviewersInline();
+    if (!suggestions.length) return nothing;
+    return html`
+      <div class="suggestedReviewers">
+        <div class="suggestedReviewersTitle">Suggested reviewers</div>
+        <ul class="suggestedReviewersList">
+          ${suggestions.map(
+            suggestion => html`<li class="suggestedReviewersItem">
+              <gr-button
+                link
+                class="suggestedReviewerName"
+                @click=${() =>
+                  this.handleSuggestedReviewerInlineClick(suggestion.account)}
+              >
+                ${suggestion.displayName}
+              </gr-button>
+              <span class="suggestedReviewerReason"
+                >— ${suggestion.reason}</span
+              >
+            </li>`
+          )}
+        </ul>
+      </div>
+    `;
+  }
+
+  private computeSuggestedReviewersInline() {
+    if (!this.change) return [];
+    const accounts: AccountInfo[] = [];
+    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
+    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
+    reviewers.forEach(a => a && accounts.push(a));
+    if (accounts.length === 0) {
+      ccs.forEach(a => a && accounts.push(a));
+      if (this.change.owner) accounts.push(this.change.owner);
+    }
+    const seen = new Set<number>();
+    const unique = accounts.filter(a => {
+      if (a._account_id == null) return false;
+      if (seen.has(a._account_id)) return false;
+      seen.add(a._account_id);
+      return true;
+    });
+    return unique.slice(0, 3).map(account => ({
+      account,
+      displayName: account.name ?? account.email ?? `User ${account._account_id}`,
+      reason: 'suggested based on this change',
+    }));
+  }
+
+  private handleSuggestedReviewerInlineClick(account: AccountInfo) {
+    if (!this.reviewersList) return;
+    this.reviewersList.addAccountItem({
+      account,
+      count: 1,
+    } as RawAccountInput);
+    this.reviewersMutated = true;
   }
 
   private renderCCList() {

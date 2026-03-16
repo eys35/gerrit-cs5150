@@ -551,11 +551,24 @@ export class GrChangeMetadata extends LitElement {
 
   private computeSuggestedReviewers() {
     if (!this.change) return [];
-    const reviewers = this.change.reviewers?.REVIEWER ?? [];
-    const limited = reviewers.slice(0, 3);
-    return limited.map(reviewer => ({
+    const accounts: AccountInfo[] = [];
+    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
+    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
+    reviewers.forEach(a => a && accounts.push(a));
+    if (accounts.length === 0) {
+      ccs.forEach(a => a && accounts.push(a));
+      if (this.change.owner) accounts.push(this.change.owner);
+    }
+    const seen = new Set<number>();
+    const unique = accounts.filter(a => {
+      if (a._account_id == null) return false;
+      if (seen.has(a._account_id)) return false;
+      seen.add(a._account_id);
+      return true;
+    });
+    return unique.slice(0, 3).map(reviewer => ({
       name: getDisplayName(this.serverConfig, reviewer),
-      reason: 'recent reviewer on this project',
+      reason: 'suggested based on this change',
     }));
   }
 
