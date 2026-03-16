@@ -326,6 +326,21 @@ export class GrChangeMetadata extends LitElement {
           --gr-vote-chip-width: 14px;
           --gr-vote-chip-height: 14px;
         }
+        .suggestedReviewersList {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+        .suggestedReviewersItem {
+          margin-bottom: var(--spacing-xs);
+        }
+        .suggestedReviewerName {
+          font-weight: var(--font-weight-bold);
+          margin-right: var(--spacing-xs);
+        }
+        .suggestedReviewerReason {
+          color: var(--deemphasized-text-color);
+        }
       `,
     ];
   }
@@ -341,7 +356,8 @@ export class GrChangeMetadata extends LitElement {
       ${this.renderNonOwner(ChangeRole.UPLOADER)}
       ${this.renderNonOwner(ChangeRole.AUTHOR)}
       ${this.renderNonOwner(ChangeRole.COMMITTER)} ${this.renderReviewers()}
-      ${this.renderCCs()} ${this.renderProjectBranch()} ${this.renderParent()}
+      ${this.renderSuggestedReviewers()} ${this.renderCCs()}
+      ${this.renderProjectBranch()} ${this.renderParent()}
       ${this.renderMergedAs()} ${this.renderShowRevertCreatedAs()}
       ${this.renderTopic()} ${this.renderCherryPickOf()}
       ${this.renderRevertOf()} ${this.renderStrategy()} ${this.renderHashTags()}
@@ -505,6 +521,48 @@ export class GrChangeMetadata extends LitElement {
         )}
       </span>
     </section>`;
+  }
+
+  private renderSuggestedReviewers() {
+    const suggestions = this.computeSuggestedReviewers();
+    if (!suggestions.length) return nothing;
+    return html`<section class="suggestedReviewers">
+      <span class="title">Suggested reviewers</span>
+      <span class="value">
+        <ul class="suggestedReviewersList">
+          ${suggestions.map(
+            suggestion => html`<li class="suggestedReviewersItem">
+              <gr-button
+                link
+                class="suggestedReviewerName"
+                @click=${() => this.handleSuggestedReviewerClick()}
+              >
+                ${suggestion.name}
+              </gr-button>
+              <span class="suggestedReviewerReason"
+                >— ${suggestion.reason}</span
+              >
+            </li>`
+          )}
+        </ul>
+      </span>
+    </section>`;
+  }
+
+  private computeSuggestedReviewers() {
+    if (!this.change) return [];
+    const reviewers = this.change.reviewers?.REVIEWER ?? [];
+    const limited = reviewers.slice(0, 3);
+    return limited.map(reviewer => ({
+      name: getDisplayName(this.serverConfig, reviewer),
+      reason: 'recent reviewer on this project',
+    }));
+  }
+
+  private handleSuggestedReviewerClick() {
+    fire(this, 'show-reply-dialog', {
+      value: {reviewersOnly: true, ccsOnly: false},
+    });
   }
 
   private renderReviewers() {
