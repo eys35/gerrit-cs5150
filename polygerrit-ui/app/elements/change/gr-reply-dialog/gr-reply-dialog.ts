@@ -301,6 +301,13 @@ export class GrReplyDialog extends LitElement {
   reviewerPendingConfirmation: SuggestedReviewerGroupInfo | null = null;
 
   @state()
+  private suggestedReviewersInline: {
+    account: AccountInfo;
+    displayName: string;
+    reason: string;
+  }[] = [];
+
+  @state()
   useSuggestedReviewers = true;
 
   @state()
@@ -675,7 +682,10 @@ export class GrReplyDialog extends LitElement {
     subscribe(
       this,
       () => this.getChangeModel().change$,
-      x => (this.change = x)
+      x => {
+        this.change = x;
+        this.loadSuggestedReviewersInline();
+      }
     );
     subscribe(
       this,
@@ -875,8 +885,7 @@ export class GrReplyDialog extends LitElement {
   }
 
   private renderSuggestedReviewersInline() {
-    const suggestions = this.computeSuggestedReviewersInline();
-    if (!suggestions.length) return nothing;
+    const suggestions = this.suggestedReviewersInline;
     return html`
       <div class="suggestedReviewers">
         <div class="suggestedReviewersTitle">
@@ -913,29 +922,30 @@ export class GrReplyDialog extends LitElement {
           </label>
         </div>
         ${when(
-      this.useSuggestedReviewers,
-      () => html`
-            <ul class="suggestedReviewersList">
-              ${suggestions.map(
-        suggestion => html`<li class="suggestedReviewersItem">
-                    <gr-button
-                      link
-                      class="suggestedReviewerName"
-                      @click=${() =>
-            this.handleSuggestedReviewerInlineClick(
-              suggestion.account
-            )}
-                    >
-                      ${suggestion.displayName}
-                    </gr-button>
-                    <span class="suggestedReviewerReason"
-                      >— ${suggestion.reason}</span
-                    >
-                  </li>`
-      )}
-            </ul>
-          `
-    )}
+          this.useSuggestedReviewers,
+          () =>
+            suggestions.length === 0
+              ? html`<span class="noSuggestedReviewers"
+                  >no suggested reviewers</span
+                >`
+              : html`<ul class="suggestedReviewersList">
+                  ${suggestions.map(
+                    s => html`<li class="suggestedReviewersItem">
+                      <gr-button
+                        link
+                        class="suggestedReviewerName"
+                        @click=${() =>
+                          this.handleSuggestedReviewerInlineClick(s.account)}
+                      >
+                        ${s.displayName}
+                      </gr-button>
+                      <span class="suggestedReviewerReason"
+                        >— ${s.reason}</span
+                      >
+                    </li>`
+                  )}
+                </ul>`
+        )}
       </div>
     `;
   }
@@ -959,32 +969,6 @@ export class GrReplyDialog extends LitElement {
     if (!Number.isFinite(parsed)) return 1;
     return Math.min(10, Math.max(0, Math.trunc(parsed)));
   }
-
-  private computeSuggestedReviewersInline() {
-    if (!this.change) return [];
-    const accounts: AccountInfo[] = [];
-    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
-    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
-    reviewers.forEach(a => a && accounts.push(a));
-    if (accounts.length === 0) {
-      ccs.forEach(a => a && accounts.push(a));
-      if (this.change.owner) accounts.push(this.change.owner);
-    }
-    const seen = new Set<number>();
-    const unique = accounts.filter(a => {
-      if (a._account_id == null) return false;
-      if (seen.has(a._account_id)) return false;
-      seen.add(a._account_id);
-      return true;
-    });
-    return unique.slice(0, 3).map(account => ({
-      account,
-      displayName:
-        account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'suggested reviewer',
-    }));
-  }
-  
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
     if (!this.reviewersList) return;
@@ -1061,6 +1045,49 @@ export class GrReplyDialog extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private async loadSuggestedReviewersInline() {
+    if (!this.change?._number) {
+      this.suggestedReviewersInline = [];
+      return;
+    }
+
+    const suggestions =
+      await this.restApiService.getChangeSuggestedReviewers(
+        this.change._number,
+        ''
+      );
+    if (suggestions && suggestions.length > 0) {
+      this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
+        if (!('account' in s) || !s.account) return [];
+        const account = s.account;
+        return [
+          {
+            account,
+            displayName:
+              account.name ?? account.email ?? `User ${account._account_id}`,
+            reason: 'suggested reviewer',
+          },
+        ];
+      });
+      return;
+    }
+
+    const admins = await this.restApiService.getGroupMembers(
+      'Administrators' as any
+    );
+    if (!admins || admins.length === 0) {
+      this.suggestedReviewersInline = [];
+      return;
+    }
+
+    this.suggestedReviewersInline = admins.slice(0, 3).map(account => ({
+      account,
+      displayName:
+        account.name ?? account.email ?? `User ${account._account_id}`,
+      reason: 'suggested reviewer',
+    }));
   }
 
   private renderLabels() {
