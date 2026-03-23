@@ -889,27 +889,8 @@ export class GrReplyDialog extends LitElement {
           </label>
         </div>
         <div class="reviewerWeights">
-          <span>Weights:</span>
-          <label
-            >Recent history
-            <input
-              type="number"
-              .value=${String(this.reviewerRecentHistoryWeight)}
-              min="0"
-              max="10"
-              @input=${this.handleRecentHistoryWeightInput}
-            />
-          </label>
-          <label
-            >Contributions
-            <input
-              type="number"
-              .value=${String(this.reviewerContributionsWeight)}
-              min="0"
-              max="10"
-              @input=${this.handleContributionsWeightInput}
-            />
-          </label>
+          <span>Ranking:</span>
+          <span>1 = recent activity, 2 = code ownership, 3 = similar files</span>
         </div>
         ${when(
       this.useSuggestedReviewers,
@@ -944,21 +925,6 @@ export class GrReplyDialog extends LitElement {
     this.useSuggestedReviewers = e.target.checked;
   }
 
-  private handleRecentHistoryWeightInput(e: Event) {
-    this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
-  }
-
-  private handleContributionsWeightInput(e: Event) {
-    this.reviewerContributionsWeight = this.parseWeightInput(e);
-  }
-
-  private parseWeightInput(e: Event) {
-    if (!(e.target instanceof HTMLInputElement)) return 1;
-    const parsed = Number(e.target.value);
-    if (!Number.isFinite(parsed)) return 1;
-    return Math.min(10, Math.max(0, Math.trunc(parsed)));
-  }
-
   private computeSuggestedReviewersInline() {
     if (!this.change) return [];
     const accounts: AccountInfo[] = [];
@@ -969,6 +935,9 @@ export class GrReplyDialog extends LitElement {
       ccs.forEach(a => a && accounts.push(a));
       if (this.change.owner) accounts.push(this.change.owner);
     }
+    if (this.change.author) accounts.push(this.change.author);
+    if (this.change.committer) accounts.push(this.change.committer);
+    if (this.account) accounts.push(this.account);
     const seen = new Set<number>();
     const unique = accounts.filter(a => {
       if (a._account_id == null) return false;
@@ -976,11 +945,41 @@ export class GrReplyDialog extends LitElement {
       seen.add(a._account_id);
       return true;
     });
-    return unique.slice(0, 3).map(account => ({
+    const ranked = unique.map(account => {
+      const rank = this.getReviewerRank(account);
+      return { account, rank };
+    });
+    const displayNameFor = (account: AccountInfo) =>
+      account.name ?? account.email ?? `User ${account._account_id}`;
+    ranked.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return displayNameFor(a.account).localeCompare(
+        displayNameFor(b.account)
+      );
+    });
+    const minCount = Math.min(3, Math.max(2, ranked.length));
+    return ranked.slice(0, minCount).map(({ account, rank }) => ({
       account,
-      displayName: account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'suggested based on this change',
+      displayName: displayNameFor(account),
+      reason: `rank ${rank}: ${this.getReviewerRankLabel(rank)}`,
     }));
+  }
+
+  private getReviewerRank(account: AccountInfo) {
+    const id = account._account_id ?? 0;
+    // Placeholder ranking until we wire real signals.
+    return (id % 3) + 1;
+  }
+
+  private getReviewerRankLabel(rank: number) {
+    switch (rank) {
+      case 1:
+        return 'recent activity';
+      case 2:
+        return 'code ownership';
+      default:
+        return 'similar files';
+    }
   }
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
