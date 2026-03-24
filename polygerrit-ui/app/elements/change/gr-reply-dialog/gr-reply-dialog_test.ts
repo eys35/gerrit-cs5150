@@ -24,7 +24,7 @@ import {
   DraftsAction,
   ReviewerState,
 } from '../../../constants/constants';
-import {StandardLabels} from '../../../utils/label-util';
+import { StandardLabels } from '../../../utils/label-util';
 import {
   createAccountWithEmail,
   createAccountWithId,
@@ -36,7 +36,7 @@ import {
   createRevision,
   createServiceUserWithId,
 } from '../../../test/test-data-generators';
-import {GrReplyDialog} from './gr-reply-dialog';
+import { GrReplyDialog } from './gr-reply-dialog';
 import {
   AccountId,
   AccountInfo,
@@ -58,25 +58,25 @@ import {
   UrlEncodedCommentId,
   UserId,
 } from '../../../types/common';
-import {GrAccountList} from '../../shared/gr-account-list/gr-account-list';
-import {GrLabelScoreRow} from '../gr-label-score-row/gr-label-score-row';
-import {GrLabelScores} from '../gr-label-scores/gr-label-scores';
-import {fixture, html, waitUntil, assert} from '@open-wc/testing';
-import {accountKey} from '../../../utils/account-util';
-import {GrButton} from '../../shared/gr-button/gr-button';
-import {GrAccountLabel} from '../../shared/gr-account-label/gr-account-label';
-import {Key, Modifier} from '../../../utils/dom-util';
-import {GrComment} from '../../shared/gr-comment/gr-comment';
-import {testResolver} from '../../../test/common-test-setup';
+import { GrAccountList } from '../../shared/gr-account-list/gr-account-list';
+import { GrLabelScoreRow } from '../gr-label-score-row/gr-label-score-row';
+import { GrLabelScores } from '../gr-label-scores/gr-label-scores';
+import { fixture, html, waitUntil, assert } from '@open-wc/testing';
+import { accountKey } from '../../../utils/account-util';
+import { GrButton } from '../../shared/gr-button/gr-button';
+import { GrAccountLabel } from '../../shared/gr-account-label/gr-account-label';
+import { Key, Modifier } from '../../../utils/dom-util';
+import { GrComment } from '../../shared/gr-comment/gr-comment';
+import { testResolver } from '../../../test/common-test-setup';
 import {
   CommentsModel,
   commentsModelToken,
 } from '../../../models/comments/comments-model';
-import {isOwner} from '../../../utils/change-util';
-import {createNewPatchsetLevel} from '../../../utils/comment-util';
-import {Timing} from '../../../constants/reporting';
-import {ParsedChangeInfo} from '../../../types/types';
-import {changeModelToken} from '../../../models/change/change-model';
+import { isOwner } from '../../../utils/change-util';
+import { createNewPatchsetLevel } from '../../../utils/comment-util';
+import { Timing } from '../../../constants/reporting';
+import { ParsedChangeInfo } from '../../../types/types';
+import { changeModelToken } from '../../../models/change/change-model';
 
 function cloneableResponse(status: number, text: string) {
   return {
@@ -114,7 +114,7 @@ suite('gr-reply-dialog tests', () => {
     };
   };
   const makeGroup = function () {
-    return {id: `${lastId++}` as GroupId};
+    return { id: `${lastId++}` as GroupId };
   };
 
   setup(async () => {
@@ -159,7 +159,7 @@ suite('gr-reply-dialog tests', () => {
     };
     change = {
       ...changeNoRevisions,
-      revisions: {'commit-id': {...createRevision(), uploader: owner}},
+      revisions: { 'commit-id': { ...createRevision(), uploader: owner } },
       current_revision: 'commit-id' as CommitId,
     };
 
@@ -228,6 +228,38 @@ suite('gr-reply-dialog tests', () => {
                 <div class="peopleListLabel">Reviewers</div>
                 <gr-account-list id="reviewers"> </gr-account-list>
                 <gr-endpoint-slot name="right"> </gr-endpoint-slot>
+              </div>
+              <div class="suggestedReviewers">
+                <div class="suggestedReviewersTitle">
+                  <label>
+                    <input type="checkbox" /> Use suggested reviewers
+                  </label>
+                </div>
+                <div class="reviewerWeights">
+                  <span>Weights:</span>
+                  <label>
+                    Recent history <input type="number" min="0" max="10" />
+                  </label>
+                  <label>
+                    Contributions <input type="number" min="0" max="10" />
+                  </label>
+                </div>
+                <ul class="suggestedReviewersList">
+                  <li class="suggestedReviewersItem">
+                    <gr-button
+                      aria-disabled="false"
+                      class="suggestedReviewerName"
+                      link=""
+                      role="button"
+                      tabindex="0"
+                    >
+                      abcd
+                    </gr-button>
+                    <span class="suggestedReviewerReason"
+                      >— suggested based on this change</span
+                    >
+                  </li>
+                </ul>
               </div>
               <gr-endpoint-slot name="below"> </gr-endpoint-slot>
             </gr-endpoint-decorator>
@@ -346,6 +378,49 @@ suite('gr-reply-dialog tests', () => {
     );
   });
 
+  test('suggested reviewer weights are interactive and stable', async () => {
+    const suggestedReviewers = queryAndAssert<HTMLElement>(
+      element,
+      '.suggestedReviewers'
+    );
+    const useCheckbox = queryAndAssert<HTMLInputElement>(
+      suggestedReviewers,
+      '.suggestedReviewersTitle input[type="checkbox"]'
+    );
+    const [recentWeightInput, contributionsWeightInput] = queryAll<
+      HTMLInputElement
+    >(suggestedReviewers, '.reviewerWeights input[type="number"]');
+
+    assert.isTrue(useCheckbox.checked);
+    assert.equal(recentWeightInput.value, '1');
+    assert.equal(contributionsWeightInput.value, '1');
+
+    recentWeightInput.value = '4';
+    recentWeightInput.dispatchEvent(new Event('input'));
+    contributionsWeightInput.value = '7';
+    contributionsWeightInput.dispatchEvent(new Event('input'));
+    await element.updateComplete;
+
+    element.commentEditing = true;
+    await element.updateComplete;
+
+    const updatedSuggestedReviewers = queryAndAssert<HTMLElement>(
+      element,
+      '.suggestedReviewers'
+    );
+    const [updatedRecentWeightInput, updatedContributionsWeightInput] = queryAll<
+      HTMLInputElement
+    >(updatedSuggestedReviewers, '.reviewerWeights input[type="number"]');
+    assert.equal(updatedRecentWeightInput.value, '4');
+    assert.equal(updatedContributionsWeightInput.value, '7');
+
+    useCheckbox.checked = false;
+    useCheckbox.dispatchEvent(new Event('change'));
+    await element.updateComplete;
+
+    assert.notExists(query(element, '.suggestedReviewersList'));
+  });
+
   test('renders private change info when reviewer is added', async () => {
     element.change!.is_private = true;
     element.requestUpdate();
@@ -367,6 +442,38 @@ suite('gr-reply-dialog tests', () => {
             <div class="peopleListLabel">Reviewers</div>
             <gr-account-list id="reviewers"> </gr-account-list>
             <gr-endpoint-slot name="right"> </gr-endpoint-slot>
+          </div>
+          <div class="suggestedReviewers">
+            <div class="suggestedReviewersTitle">
+              <label>
+                <input type="checkbox" /> Use suggested reviewers
+              </label>
+            </div>
+            <div class="reviewerWeights">
+              <span>Weights:</span>
+              <label>
+                Recent history <input type="number" min="0" max="10" />
+              </label>
+              <label>
+                Contributions <input type="number" min="0" max="10" />
+              </label>
+            </div>
+            <ul class="suggestedReviewersList">
+              <li class="suggestedReviewersItem">
+                <gr-button
+                  aria-disabled="false"
+                  class="suggestedReviewerName"
+                  link=""
+                  role="button"
+                  tabindex="0"
+                >
+                  abcd
+                </gr-button>
+                <span class="suggestedReviewerReason"
+                  >— suggested based on this change</span
+                >
+              </li>
+            </ul>
           </div>
           <gr-endpoint-slot name="below"> </gr-endpoint-slot>
         </gr-endpoint-decorator>
@@ -402,10 +509,10 @@ suite('gr-reply-dialog tests', () => {
 
     const account = createAccountWithId(22);
     element.reviewersList!.accounts = [];
-    element.reviewersList!.addAccountItem({account, count: 1});
+    element.reviewersList!.addAccountItem({ account, count: 1 });
     element.reviewersList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account},
+        detail: { account },
       })
     );
     element.requestUpdate();
@@ -527,7 +634,7 @@ suite('gr-reply-dialog tests', () => {
     element.canBeStarted = true;
     await element.updateComplete;
 
-    element.account = {_account_id: 123 as AccountId};
+    element.account = { _account_id: 123 as AccountId };
     element.newAttentionSet = new Set([314 as AccountId]);
     element.uploader = createAccountWithId(314);
     const saveReviewPromise = interceptSaveReview();
@@ -604,28 +711,28 @@ suite('gr-reply-dialog tests', () => {
     hasDraft = true,
     includeComments = true
   ) {
-    element.account = {_account_id: userId};
+    element.account = { _account_id: userId };
     element.reviewers =
       reviewerIds?.map(id => {
-        return {_account_id: id};
+        return { _account_id: id };
       }) ?? [];
     let draftThreads: CommentThread[] = [];
     if (hasDraft) {
       draftThreads = [
         {
-          ...createCommentThread([{...createDraft(), unresolved: true}]),
+          ...createCommentThread([{ ...createDraft(), unresolved: true }]),
         },
       ];
     }
     replyToIds?.forEach(id =>
       draftThreads[0].comments.push({
         ...createComment(),
-        author: {_account_id: id},
+        author: { _account_id: id },
       })
     );
     const change = {
       ...createChange(),
-      owner: {_account_id: ownerId},
+      owner: { _account_id: ownerId },
       status,
       reviewers: {
         [ReviewerState.REVIEWER]: element.reviewers,
@@ -641,7 +748,7 @@ suite('gr-reply-dialog tests', () => {
       change.current_revision = 'b' as CommitId;
       change.revisions = {
         a: createRevision(1),
-        b: {...createRevision(2), uploader: {_account_id: uploaderId}},
+        b: { ...createRevision(2), uploader: { _account_id: uploaderId } },
       };
     }
     element.change = change;
@@ -1048,10 +1155,10 @@ suite('gr-reply-dialog tests', () => {
   });
 
   test('computeNewAttention when adding reviewers', async () => {
-    element.account = {_account_id: 1 as AccountId};
+    element.account = { _account_id: 1 as AccountId };
     element.change = {
       ...createChange(),
-      owner: {_account_id: 5 as AccountId},
+      owner: { _account_id: 5 as AccountId },
       status: ChangeStatus.NEW,
       attention_set: {},
     };
@@ -1059,8 +1166,8 @@ suite('gr-reply-dialog tests', () => {
     await element.updateComplete;
 
     element.reviewers = [
-      {_account_id: 1 as AccountId},
-      {_account_id: 2 as AccountId},
+      { _account_id: 1 as AccountId },
+      { _account_id: 2 as AccountId },
     ];
     element._ccs = [];
     element.draftCommentThreads = [];
@@ -1086,13 +1193,13 @@ suite('gr-reply-dialog tests', () => {
   test('computeNewAttention when sending wip change for review', async () => {
     element.change = {
       ...createChange(),
-      owner: {_account_id: 1 as AccountId},
+      owner: { _account_id: 1 as AccountId },
       status: ChangeStatus.NEW,
       attention_set: {},
       reviewers: {
         [ReviewerState.REVIEWER]: [
-          {...createAccountWithId(2)},
-          {...createAccountWithId(3)},
+          { ...createAccountWithId(2) },
+          { ...createAccountWithId(3) },
         ],
       },
     };
@@ -1100,14 +1207,14 @@ suite('gr-reply-dialog tests', () => {
     await element.updateComplete;
 
     element.reviewers = [
-      {...createAccountWithId(2)},
-      {...createAccountWithId(3)},
+      { ...createAccountWithId(2) },
+      { ...createAccountWithId(3) },
     ];
 
     element._ccs = [];
     element.draftCommentThreads = [];
     element.includeComments = false;
-    element.account = {_account_id: 1 as AccountId};
+    element.account = { _account_id: 1 as AccountId };
 
     await element.updateComplete;
 
@@ -1127,7 +1234,7 @@ suite('gr-reply-dialog tests', () => {
     );
 
     // ... but not when someone else replies.
-    element.account = {_account_id: 4 as AccountId};
+    element.account = { _account_id: 4 as AccountId };
     element.isOwner = isOwner(element.change, element.account);
     element.computeNewAttention();
     assert.sameMembers([...element.newAttentionSet], []);
@@ -1135,10 +1242,10 @@ suite('gr-reply-dialog tests', () => {
 
   test('computeNewAttentionAccounts', () => {
     element.reviewers = [
-      {_account_id: 123 as AccountId, display_name: 'Ernie'},
-      {_account_id: 321 as AccountId, display_name: 'Bert'},
+      { _account_id: 123 as AccountId, display_name: 'Ernie' },
+      { _account_id: 321 as AccountId, display_name: 'Bert' },
     ];
-    element._ccs = [{_account_id: 7 as AccountId, display_name: 'Elmo'}];
+    element._ccs = [{ _account_id: 7 as AccountId, display_name: 'Elmo' }];
     const compute = (currentAtt: AccountId[], newAtt: AccountId[]) => {
       element.currentAttentionSet = new Set(currentAtt);
       element.newAttentionSet = new Set(newAtt);
@@ -1168,9 +1275,9 @@ suite('gr-reply-dialog tests', () => {
       labels: {
         'Code-Review': {
           all: [
-            {_account_id: 1 as AccountId, value: 0},
-            {_account_id: 2 as AccountId, value: 1},
-            {_account_id: 3 as AccountId, value: 2},
+            { _account_id: 1 as AccountId, value: 0 },
+            { _account_id: 2 as AccountId, value: 1 },
+            { _account_id: 3 as AccountId, value: 2 },
           ],
           values: {
             '-2': 'This shall not be submitted',
@@ -1189,14 +1296,14 @@ suite('gr-reply-dialog tests', () => {
           {
             ...createComment(),
             id: '1' as UrlEncodedCommentId,
-            author: {_account_id: 1 as AccountId},
+            author: { _account_id: 1 as AccountId },
             unresolved: false,
           },
           {
             ...createComment(),
             id: '2' as UrlEncodedCommentId,
             in_reply_to: '1' as UrlEncodedCommentId,
-            author: {_account_id: 2 as AccountId},
+            author: { _account_id: 2 as AccountId },
             unresolved: true,
           },
         ]),
@@ -1206,14 +1313,14 @@ suite('gr-reply-dialog tests', () => {
           {
             ...createComment(),
             id: '3' as UrlEncodedCommentId,
-            author: {_account_id: 3 as AccountId},
+            author: { _account_id: 3 as AccountId },
             unresolved: false,
           },
           {
             ...createComment(),
             id: '4' as UrlEncodedCommentId,
             in_reply_to: '3' as UrlEncodedCommentId,
-            author: {_account_id: 4 as AccountId},
+            author: { _account_id: 4 as AccountId },
             unresolved: false,
           },
         ]),
@@ -1233,9 +1340,9 @@ suite('gr-reply-dialog tests', () => {
       labels: {
         'Code-Review': {
           all: [
-            {_account_id: 1 as AccountId, value: 0},
-            {_account_id: 2 as AccountId, value: 1},
-            {_account_id: 3 as AccountId, value: 2},
+            { _account_id: 1 as AccountId, value: 0 },
+            { _account_id: 2 as AccountId, value: 1 },
+            { _account_id: 3 as AccountId, value: 2 },
           ],
           values: {
             '-2': 'This shall not be submitted',
@@ -1253,14 +1360,14 @@ suite('gr-reply-dialog tests', () => {
           {
             ...createComment(),
             id: '1' as UrlEncodedCommentId,
-            author: {_account_id: 1 as AccountId},
+            author: { _account_id: 1 as AccountId },
             unresolved: false,
           },
           {
             ...createComment(),
             id: '2' as UrlEncodedCommentId,
             in_reply_to: '1' as UrlEncodedCommentId,
-            author: {_account_id: 2 as AccountId},
+            author: { _account_id: 2 as AccountId },
             unresolved: true,
           },
         ]),
@@ -1270,7 +1377,7 @@ suite('gr-reply-dialog tests', () => {
           {
             ...createComment(),
             id: '3' as UrlEncodedCommentId,
-            author: {_account_id: 3 as AccountId},
+            author: { _account_id: 3 as AccountId },
             unresolved: false,
           },
           {
@@ -1284,7 +1391,7 @@ suite('gr-reply-dialog tests', () => {
             ...createComment(),
             id: '5' as UrlEncodedCommentId,
             in_reply_to: '4' as UrlEncodedCommentId,
-            author: {_account_id: 4 as AccountId},
+            author: { _account_id: 4 as AccountId },
             unresolved: false,
           },
         ]),
@@ -1402,7 +1509,7 @@ suite('gr-reply-dialog tests', () => {
   });
 
   test('setlabelValue', async () => {
-    element.account = {_account_id: 1 as AccountId};
+    element.account = { _account_id: 1 as AccountId };
     await element.updateComplete;
     const label = 'Verified';
     const value = '+1';
@@ -1582,10 +1689,10 @@ suite('gr-reply-dialog tests', () => {
     test('toast is not fired if change is WIP and becomes active', async () => {
       const account = createAccountWithId(22);
       element.reviewersList!.accounts = [];
-      element.reviewersList!.addAccountItem({account, count: 1});
+      element.reviewersList!.addAccountItem({ account, count: 1 });
       element.reviewersList!.dispatchEvent(
         new CustomEvent('account-added', {
-          detail: {account},
+          detail: { account },
         })
       );
       element.change = {
@@ -1604,10 +1711,10 @@ suite('gr-reply-dialog tests', () => {
     test('toast is fired if change is WIP and becomes active and reviewer added', async () => {
       const account = createAccountWithId(22);
       element.reviewersList!.accounts = [];
-      element.reviewersList!.addAccountItem({account, count: 1});
+      element.reviewersList!.addAccountItem({ account, count: 1 });
       element.reviewersList!.dispatchEvent(
         new CustomEvent('account-added', {
-          detail: {account},
+          detail: { account },
         })
       );
       element.change = {
@@ -1631,7 +1738,7 @@ suite('gr-reply-dialog tests', () => {
       queryAndAssert<GrAccountList>(element, '#reviewers').allowAnyInput
     );
     queryAndAssert(element, '#ccs').dispatchEvent(
-      new CustomEvent('account-text-changed', {bubbles: true, composed: true})
+      new CustomEvent('account-text-changed', { bubbles: true, composed: true })
     );
     assert.isTrue(element.reviewersMutated);
   });
@@ -1649,21 +1756,21 @@ suite('gr-reply-dialog tests', () => {
     element.reviewers = [reviewer1, reviewer2];
     element._ccs = [cc1, cc2];
 
-    assert.isTrue(filter({account: makeAccount()} as Suggestion));
-    assert.isTrue(filter({group: makeGroup()} as Suggestion));
+    assert.isTrue(filter({ account: makeAccount() } as Suggestion));
+    assert.isTrue(filter({ group: makeGroup() } as Suggestion));
 
     // Owner should be excluded.
-    assert.isFalse(filter({account: owner} as Suggestion));
+    assert.isFalse(filter({ account: owner } as Suggestion));
 
     // Existing and pending reviewers should be excluded when isCC = false.
-    assert.isFalse(filter({account: reviewer1} as Suggestion));
-    assert.isFalse(filter({group: reviewer2} as Suggestion));
+    assert.isFalse(filter({ account: reviewer1 } as Suggestion));
+    assert.isFalse(filter({ group: reviewer2 } as Suggestion));
 
     filter = element.filterReviewerSuggestionGenerator(true);
 
     // Existing and pending CCs should be excluded when isCC = true;.
-    assert.isFalse(filter({account: cc1} as Suggestion));
-    assert.isFalse(filter({group: cc2} as Suggestion));
+    assert.isFalse(filter({ account: cc1 } as Suggestion));
+    assert.isFalse(filter({ group: cc2 } as Suggestion));
   });
 
   test('focusOn', async () => {
@@ -1783,7 +1890,7 @@ suite('gr-reply-dialog tests', () => {
 
     element.reviewersList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: cc1},
+        detail: { account: cc1 },
       })
     );
     await element.updateComplete;
@@ -1791,18 +1898,18 @@ suite('gr-reply-dialog tests', () => {
     assert.deepEqual(element.reviewers, [reviewer1, reviewer2, reviewer3, cc1]);
     assert.deepEqual(element.ccs, [cc2, cc3, cc4]);
 
-    element.reviewersList!.addAccountItem({account: cc4, count: 1});
+    element.reviewersList!.addAccountItem({ account: cc4, count: 1 });
     element.reviewersList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: cc4},
+        detail: { account: cc4 },
       })
     );
     await element.updateComplete;
 
-    element.reviewersList!.addAccountItem({account: cc3, count: 1});
+    element.reviewersList!.addAccountItem({ account: cc3, count: 1 });
     element.reviewersList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: cc3},
+        detail: { account: cc3 },
       })
     );
     await element.updateComplete;
@@ -1888,7 +1995,7 @@ suite('gr-reply-dialog tests', () => {
     element._ccs.push(reviewer1);
     element.ccsList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: reviewer1},
+        detail: { account: reviewer1 },
       })
     );
 
@@ -1900,18 +2007,18 @@ suite('gr-reply-dialog tests', () => {
     assert.deepEqual(element.reviewers, [reviewer2, reviewer3]);
     assert.deepEqual(element.ccs, [cc1, cc2, cc3, cc4, reviewer1]);
 
-    element.ccsList!.addAccountItem({account: reviewer3, count: 1});
+    element.ccsList!.addAccountItem({ account: reviewer3, count: 1 });
     element.ccsList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: reviewer3},
+        detail: { account: reviewer3 },
       })
     );
     await element.updateComplete;
 
-    element.ccsList!.addAccountItem({account: reviewer2, count: 1});
+    element.ccsList!.addAccountItem({ account: reviewer2, count: 1 });
     element.ccsList!.dispatchEvent(
       new CustomEvent('account-added', {
-        detail: {account: reviewer2},
+        detail: { account: reviewer2 },
       })
     );
     await element.updateComplete;
@@ -1941,7 +2048,7 @@ suite('gr-reply-dialog tests', () => {
 
     element.change!.reviewers = {
       [ReviewerState.CC]: [],
-      [ReviewerState.REVIEWER]: [{_account_id: 33 as AccountId}],
+      [ReviewerState.REVIEWER]: [{ _account_id: 33 as AccountId }],
     };
     await element.updateComplete;
 
@@ -1956,7 +2063,7 @@ suite('gr-reply-dialog tests', () => {
     // Remove and add to other field.
     reviewers.dispatchEvent(
       new CustomEvent('remove-account', {
-        detail: {account: reviewer1},
+        detail: { account: reviewer1 },
         composed: true,
         bubbles: true,
       })
@@ -1966,28 +2073,28 @@ suite('gr-reply-dialog tests', () => {
     assert.isTrue(element.reviewersMutated);
     ccs.entry!.dispatchEvent(
       new CustomEvent('add', {
-        detail: {value: {account: reviewer1}},
+        detail: { value: { account: reviewer1 } },
         composed: true,
         bubbles: true,
       })
     );
     ccs.dispatchEvent(
       new CustomEvent('remove-account', {
-        detail: {account: cc1},
+        detail: { account: cc1 },
         composed: true,
         bubbles: true,
       })
     );
     ccs.dispatchEvent(
       new CustomEvent('remove-account', {
-        detail: {account: cc3},
+        detail: { account: cc3 },
         composed: true,
         bubbles: true,
       })
     );
     reviewers.entry!.dispatchEvent(
       new CustomEvent('add', {
-        detail: {value: {account: cc1}},
+        detail: { value: { account: cc1 } },
         composed: true,
         bubbles: true,
       })
@@ -2005,7 +2112,7 @@ suite('gr-reply-dialog tests', () => {
     // Add to Reviewer/CC which will automatically remove from CC/Reviewer.
     reviewers.entry!.dispatchEvent(
       new CustomEvent('add', {
-        detail: {value: {account: cc2}},
+        detail: { value: { account: cc2 } },
         composed: true,
         bubbles: true,
       })
@@ -2024,7 +2131,7 @@ suite('gr-reply-dialog tests', () => {
 
     ccs.entry!.dispatchEvent(
       new CustomEvent('add', {
-        detail: {value: {account: reviewer2}},
+        detail: { value: { account: reviewer2 } },
         composed: true,
         bubbles: true,
       })
@@ -2081,7 +2188,7 @@ suite('gr-reply-dialog tests', () => {
 
     element.change!.reviewers = {
       [ReviewerState.CC]: [],
-      [ReviewerState.REVIEWER]: [{_account_id: reviewer1._account_id}],
+      [ReviewerState.REVIEWER]: [{ _account_id: reviewer1._account_id }],
     };
 
     await element.updateComplete;
@@ -2095,14 +2202,14 @@ suite('gr-reply-dialog tests', () => {
     // Remove and add to other field.
     reviewers.dispatchEvent(
       new CustomEvent('remove', {
-        detail: {account: reviewer1},
+        detail: { account: reviewer1 },
         composed: true,
         bubbles: true,
       })
     );
     ccs.entry!.dispatchEvent(
       new CustomEvent('add', {
-        detail: {value: {account: reviewer1}},
+        detail: { value: { account: reviewer1 } },
         composed: true,
         bubbles: true,
       })
@@ -2126,7 +2233,7 @@ suite('gr-reply-dialog tests', () => {
 
     element.change!.reviewers = {
       [ReviewerState.CC]: [],
-      [ReviewerState.REVIEWER]: [{_account_id: reviewer1._account_id}],
+      [ReviewerState.REVIEWER]: [{ _account_id: reviewer1._account_id }],
     };
 
     await element.updateComplete;
@@ -2260,7 +2367,7 @@ suite('gr-reply-dialog tests', () => {
 
   test('buttons disabled until all API calls are resolved', () => {
     stubSaveReview(() => {
-      return {ready: true};
+      return { ready: true };
     });
     return element.send(true, true).then(() => {
       assert.isFalse(element.disabled);
@@ -2349,7 +2456,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabled_draftCommentsSend', () => {
     // Mock nonempty comment draft array; with sending comments.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = false;
     element.labelsChanged = false;
@@ -2363,7 +2470,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabled_draftCommentsDoNotSend', () => {
     // Mock nonempty comment draft array; without sending comments.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = false;
     element.labelsChanged = false;
@@ -2378,7 +2485,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabled_changeMessage', () => {
     // Mock nonempty change message.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = 'test';
     element.reviewersMutated = false;
     element.labelsChanged = false;
@@ -2393,7 +2500,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabledreviewersChanged', () => {
     // Mock reviewers mutated.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = true;
     element.labelsChanged = false;
@@ -2408,7 +2515,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabled_labelsChanged', () => {
     // Mock labels changed.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = false;
     element.labelsChanged = true;
@@ -2423,7 +2530,7 @@ suite('gr-reply-dialog tests', () => {
   test('isSendDisabled_dialogDisabled', () => {
     // Whole dialog is disabled.
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = false;
     element.labelsChanged = true;
@@ -2441,7 +2548,7 @@ suite('gr-reply-dialog tests', () => {
       element.change!.labels![StandardLabels.CODE_REVIEW]! as DetailedLabelInfo
     ).all = [account];
     element.canBeStarted = false;
-    element.draftCommentThreads = [{...createCommentThread([createComment()])}];
+    element.draftCommentThreads = [{ ...createCommentThread([createComment()]) }];
     element.patchsetLevelDraftMessage = '';
     element.reviewersMutated = false;
     element.labelsChanged = false;
@@ -2649,7 +2756,7 @@ suite('gr-reply-dialog tests', () => {
     });
 
     test('replies to patchset level comments are not filtered out', async () => {
-      const draft = {...createDraft(), in_reply_to: '1' as UrlEncodedCommentId};
+      const draft = { ...createDraft(), in_reply_to: '1' as UrlEncodedCommentId };
       commentsModel.setState({
         drafts: {
           'abc.txt': [draft],
@@ -2726,7 +2833,7 @@ suite('gr-reply-dialog tests', () => {
     const changeStateUpdateSpy = sinon.spy(changeModel, 'updateStateChange');
     const responseChange = {
       ...change,
-      labels: {Verified: createLabelInfo(-1)},
+      labels: { Verified: createLabelInfo(-1) },
       revisions: undefined,
       current_revision: undefined,
       current_revision_number: (change.current_revision_number +
@@ -2759,7 +2866,7 @@ suite('gr-reply-dialog tests', () => {
     assert.isTrue(reloadTriggered);
 
     // All revision information is old, but all other information is new.
-    const expectedChange = {...change, labels: {Verified: createLabelInfo(-1)}};
+    const expectedChange = { ...change, labels: { Verified: createLabelInfo(-1) } };
     assert.deepEqual(changeStateUpdateSpy.firstCall.args[0], expectedChange);
   });
 
@@ -2771,7 +2878,7 @@ suite('gr-reply-dialog tests', () => {
     const changeStateUpdateSpy = sinon.spy(changeModel, 'updateStateChange');
     const responseChange = {
       ...change,
-      labels: {Verified: createLabelInfo(-1)},
+      labels: { Verified: createLabelInfo(-1) },
       revisions: undefined,
       current_revision: undefined,
       current_revision_number: change.current_revision_number,
@@ -2800,7 +2907,7 @@ suite('gr-reply-dialog tests', () => {
     await waitEventLoop();
     assert.isFalse(reloadTriggered);
     // All revision information is old, but all other information is new.
-    const expectedChange = {...change, labels: {Verified: createLabelInfo(-1)}};
+    const expectedChange = { ...change, labels: { Verified: createLabelInfo(-1) } };
     assert.deepEqual(changeStateUpdateSpy.firstCall.args[0], expectedChange);
   });
 

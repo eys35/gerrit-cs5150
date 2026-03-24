@@ -144,6 +144,28 @@ public class ReviewerRecommender {
 
     logger.atFine().log("Base candidate scores: %s", candidateScores);
 
+    // Algorithmic scoring: score = w1·ownership + w2·familiarity + w3·engagement
+    //                                + w4·crossRepo - w5·loadPenalty
+    // All weights are tunable in gerrit.config under [algorithmicReviewer].
+    // Each apply* method is currently a no-op; base scoring remains the fallback.
+    double w1 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w1"), 0.35); // ownership
+    double w2 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w2"), 0.30); // file familiarity
+    double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20); // engagement
+    double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10); // cross-repo
+    double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05); // load penalty
+    int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
+    logger.atFine().log(
+        "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s",
+        w1, w2, w3, w4, w5, diversityCap);
+
+    applyOwnershipScores(changeNotes, projectState, candidateScores, w1);
+    applyFileFamiliarityScores(changeNotes, candidateScores, w2);
+    applyEngagementScores(changes, candidateScores, w3);
+    applyCrossRepoScores(changeNotes, projectState, candidateScores, w4);
+    applyLoadPenalties(candidateScores, w5);
+    applyDiversityCap(candidateScores, diversityCap);
+
+
     // Send the query along with a candidate list to all plugins and merge the
     // results. Plugins don't necessarily need to use the candidates list, they
     // can also return non-candidate account ids.
@@ -244,6 +266,94 @@ public class ReviewerRecommender {
     return reviewerIds.stream()
         .filter(reviewerId -> accountMatchesQuery(reviewerStates.get(reviewerId), query))
         .collect(toImmutableList());
+  }
+
+  // TODO: replace with OwnershipResolver.score(id, files).
+  // ownership(user, path) = 1.0 if direct CODEOWNER, 0.5 if parent-dir owner.
+  private void applyOwnershipScores(
+      @Nullable ChangeNotes changeNotes,
+      @SuppressWarnings("unused") ProjectState projectState,
+      Map<Account.Id, MutableDouble> candidateScores,
+      double weight) {
+    if (changeNotes == null) {
+      return;
+    }
+    logger.atFine().log("applyOwnershipScores: placeholder (no-op), weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      candidateScores.get(id).add(0.0); // TODO: weight * ownershipResolver.score(id, files)
+    }
+  }
+
+  // TODO: replace with ExpertiseProfileStore.familiarity(id, files).
+  // familiarity(user, repo, path) = Σ_authored e^(-λ·Δt) + α · Σ_reviewed e^(-λ·Δt)
+  private void applyFileFamiliarityScores(
+      @Nullable ChangeNotes changeNotes,
+      Map<Account.Id, MutableDouble> candidateScores,
+      double weight) {
+    if (changeNotes == null) {
+      return;
+    }
+    logger.atFine().log("applyFileFamiliarityScores: placeholder (no-op), weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      candidateScores.get(id).add(0.0); // TODO: weight * profileStore.familiarity(id, files)
+    }
+  }
+
+  // TODO: replace with event store lookup per reviewer.
+  // engagement = normalize(comment_count + |label_vote|) * e^(-λ·Δt), summed over recentChanges.
+  private void applyEngagementScores(
+      @SuppressWarnings("unused") ImmutableList<ChangeData> recentChanges,
+      Map<Account.Id, MutableDouble> candidateScores,
+      double weight) {
+    logger.atFine().log("applyEngagementScores: placeholder (no-op), weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      candidateScores.get(id).add(0.0); // TODO: weight * engagementScore(id, recentChanges)
+    }
+  }
+
+  // TODO: replace with CrossRepoLinker.score(id, project).
+  // cross_repo_score(user, path) = β · Σ_other_repos familiarity(user, other_repo, path)
+  private void applyCrossRepoScores(
+      @Nullable ChangeNotes changeNotes,
+      @SuppressWarnings("unused") ProjectState projectState,
+      Map<Account.Id, MutableDouble> candidateScores,
+      double weight) {
+    if (changeNotes == null) {
+      return;
+    }
+    logger.atFine().log("applyCrossRepoScores: placeholder (no-op), weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      candidateScores.get(id).add(0.0); // TODO: weight * crossRepoLinker.score(id, project)
+    }
+  }
+
+  // TODO: replace with a real open-review-count lookup.
+  // loadPenalty = f(openReviewCount); subtracted to avoid over-assigning the same reviewers.
+  private void applyLoadPenalties(
+      Map<Account.Id, MutableDouble> candidateScores, double weight) {
+    logger.atFine().log("applyLoadPenalties: placeholder (no-op), weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      candidateScores.get(id).add(0.0); // TODO: add(-weight * loadPenalty(id))
+    }
+  }
+
+  // TODO: group candidates by CODEOWNERS cluster (via OwnershipResolver) and keep only the
+  // top-cap entries per cluster to prevent any one cluster from dominating results.
+  private void applyDiversityCap(
+      @SuppressWarnings("unused") Map<Account.Id, MutableDouble> candidateScores, int cap) {
+    logger.atFine().log("applyDiversityCap: placeholder (no-op), cap=%s", cap);
+    // TODO: remove lower-ranked candidates that exceed cap per ownership cluster
+  }
+
+  private static double parseConfigDouble(String value, double defaultValue) {
+    if (value == null || value.isEmpty()) {
+      return defaultValue;
+    }
+    try {
+      return Double.parseDouble(value);
+    } catch (NumberFormatException e) {
+      return defaultValue;
+    }
   }
 
   private boolean accountMatchesQuery(AccountState accountState, String query) {
