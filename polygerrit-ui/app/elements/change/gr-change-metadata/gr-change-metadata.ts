@@ -74,27 +74,28 @@ import {
   AutocompleteQuery,
   AutocompleteSuggestion,
 } from '../../shared/gr-autocomplete/gr-autocomplete';
-import { getRevertCreatedChangeIds } from '../../../utils/message-util';
-import { Interaction } from '../../../constants/reporting';
-import { getApprovalInfo, getCodeReviewLabel } from '../../../utils/label-util';
-import { LitElement, css, html, nothing, PropertyValues } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
-import { sharedStyles } from '../../../styles/shared-styles';
-import { fontStyles } from '../../../styles/gr-font-styles';
-import { changeMetadataStyles } from '../../../styles/gr-change-metadata-shared-styles';
-import { when } from 'lit/directives/when.js';
-import { createSearchUrl } from '../../../models/views/search';
-import { createChangeUrl } from '../../../models/views/change';
-import { getChangeWeblinks } from '../../../utils/weblink-util';
-import { throwingErrorCallback } from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
-import { subscribe } from '../../lit/subscription-controller';
-import { userModelToken } from '../../../models/user/user-model';
-import { resolve } from '../../../models/dependency';
-import { configModelToken } from '../../../models/config/config-model';
-import { changeModelToken } from '../../../models/change/change-model';
-import { relatedChangesModelToken } from '../../../models/change/related-changes-model';
-import { truncatePath } from '../../../utils/path-list-util';
-import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
+import {getRevertCreatedChangeIds} from '../../../utils/message-util';
+import {Interaction} from '../../../constants/reporting';
+import {getApprovalInfo, getCodeReviewLabel} from '../../../utils/label-util';
+import {LitElement, css, html, nothing, PropertyValues} from 'lit';
+import {customElement, property, query, state} from 'lit/decorators.js';
+import {sharedStyles} from '../../../styles/shared-styles';
+import {fontStyles} from '../../../styles/gr-font-styles';
+import {changeMetadataStyles} from '../../../styles/gr-change-metadata-shared-styles';
+import {when} from 'lit/directives/when.js';
+import {createSearchUrl} from '../../../models/views/search';
+import {createChangeUrl} from '../../../models/views/change';
+import {getChangeWeblinks} from '../../../utils/weblink-util';
+import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
+import {subscribe} from '../../lit/subscription-controller';
+import {userModelToken} from '../../../models/user/user-model';
+import {resolve} from '../../../models/dependency';
+import {configModelToken} from '../../../models/config/config-model';
+import {changeModelToken} from '../../../models/change/change-model';
+import {relatedChangesModelToken} from '../../../models/change/related-changes-model';
+import {truncatePath} from '../../../utils/path-list-util';
+import {accountEmail, getDisplayName} from '../../../utils/display-name-util';
+import {GroupName} from '../../../api/rest-api';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
 
@@ -185,6 +186,8 @@ export class GrChangeMetadata extends LitElement {
     relatedChangesModelToken
   );
 
+  @state() private suggestedReviewers: string[] = [];
+
   constructor() {
     super();
     subscribe(
@@ -205,7 +208,10 @@ export class GrChangeMetadata extends LitElement {
     subscribe(
       this,
       () => this.getChangeModel().change$,
-      change => (this.change = change)
+      change => {
+        this.change = change;
+        this.loadSuggestedReviewers();
+      }
     );
     subscribe(
       this,
@@ -534,8 +540,7 @@ export class GrChangeMetadata extends LitElement {
   }
 
   private renderSuggestedReviewers() {
-    const suggestions = this.computeSuggestedReviewers();
-    if (!suggestions.length) return nothing;
+    const suggestions = this.suggestedReviewers;
     return html`<section class="suggestedReviewers">
       <span class="title">
         Suggested reviewers
@@ -546,47 +551,60 @@ export class GrChangeMetadata extends LitElement {
           <label>Recent history weight: <input type="number" value="1" min="0" max="10"/></label>
           <label>Contributions weight: <input type="number" value="1" min="0" max="10"/></label>
         </div>
-        <ul class="suggestedReviewersList">
-          ${suggestions.map(
-      suggestion => html`<li class="suggestedReviewersItem">
-              <gr-button
-                link
-                class="suggestedReviewerName"
-                @click=${() => this.handleSuggestedReviewerClick()}
-              >
-                ${suggestion.name}
-              </gr-button>
-              <span class="suggestedReviewerReason"
-                >— ${suggestion.reason}</span
-              >
-            </li>`
-    )}
-        </ul>
+        ${suggestions.length === 0
+          ? html`<span class="noSuggestedReviewers"
+              >no suggested reviewers</span
+            >`
+          : html`<ul class="suggestedReviewersList">
+              ${suggestions.map(
+          suggestion => html`<li class="suggestedReviewersItem">
+                  <gr-button
+                    link
+                    class="suggestedReviewerName"
+                    @click=${() => this.handleSuggestedReviewerClick()}
+                  >
+                    ${suggestion}
+                  </gr-button>
+                  <span class="suggestedReviewerReason"
+                    >— suggested reviewer</span
+                  >
+                </li>`
+        )}
+            </ul>`}
       </span>
     </section>`;
   }
 
-  private computeSuggestedReviewers() {
-    if (!this.change) return [];
-    const accounts: AccountInfo[] = [];
-    const reviewers = (this.change.reviewers?.REVIEWER ?? []) as AccountInfo[];
-    const ccs = (this.change.reviewers?.CC ?? []) as AccountInfo[];
-    reviewers.forEach(a => a && accounts.push(a));
-    if (accounts.length === 0) {
-      ccs.forEach(a => a && accounts.push(a));
-      if (this.change.owner) accounts.push(this.change.owner);
+  private async loadSuggestedReviewers() {
+    if (!this.change) return;
+    const changeNum = this.change._number;
+    if (!changeNum) return;
+    const suggestions =
+      await this.restApiService.getChangeSuggestedReviewers(
+        changeNum,
+        '',
+        throwingErrorCallback
+      );
+    if (suggestions && suggestions.length > 0) {
+      this.suggestedReviewers = suggestions
+        .slice(0, 3)
+        .map(s => ('account' in s && s.account.name ? s.account.name : ''));
+      return;
     }
-    const seen = new Set<number>();
-    const unique = accounts.filter(a => {
-      if (a._account_id == null) return false;
-      if (seen.has(a._account_id)) return false;
-      seen.add(a._account_id);
-      return true;
-    });
-    return unique.slice(0, 3).map(reviewer => ({
-      name: getDisplayName(this.serverConfig, reviewer),
-      reason: 'suggested based on this change',
-    }));
+
+    // Fallback: retrieve members of the Administrators group and use them as
+    // placeholder suggestions until the new algorithmic recommender is wired
+    // through the backend.
+    const adminMembers = await this.restApiService.getGroupMembers(
+      'Administrators' as GroupName
+    );
+    if (!adminMembers || adminMembers.length === 0) {
+      this.suggestedReviewers = [];
+      return;
+    }
+    this.suggestedReviewers = adminMembers
+      .slice(0, 3)
+      .map(a => a.name ?? a.email ?? `User ${a._account_id}`);
   }
 
   private handleSuggestedReviewerClick() {
