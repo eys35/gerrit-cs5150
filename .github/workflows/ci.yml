@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium
+          echo "CHROME_BIN=/usr/bin/chromium" >> $GITHUB_ENV
+
+      - name: Install Bazelisk and Yarn
+        run: |
+          npm install -g @bazel/bazelisk yarn
+
+      - name: Install JS deps
+        run: |
+          yarn setup
+
+      - name: Build Gerrit
+        run: |
+          bazel build gerrit
+
+      - name: Backend tests
+        run: |
+          bazel test //java/... //javatests/... --test_output=errors
+
+      - name: Lint
+        run: |
+          yarn lint
+
+      - name: UI tests
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          yarn test

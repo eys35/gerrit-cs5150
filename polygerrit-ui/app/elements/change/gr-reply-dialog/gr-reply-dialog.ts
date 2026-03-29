@@ -899,27 +899,8 @@ export class GrReplyDialog extends LitElement {
           </label>
         </div>
         <div class="reviewerWeights">
-          <span>Weights:</span>
-          <label
-            >Recent history
-            <input
-              type="number"
-              .value=${String(this.reviewerRecentHistoryWeight)}
-              min="0"
-              max="10"
-              @input=${this.handleRecentHistoryWeightInput}
-            />
-          </label>
-          <label
-            >Contributions
-            <input
-              type="number"
-              .value=${String(this.reviewerContributionsWeight)}
-              min="0"
-              max="10"
-              @input=${this.handleContributionsWeightInput}
-            />
-          </label>
+          <span>Ranking:</span>
+          <span>1 = recent activity, 2 = code ownership, 3 = similar files</span>
         </div>
         ${when(
           this.useSuggestedReviewers,
@@ -955,6 +936,7 @@ export class GrReplyDialog extends LitElement {
     this.useSuggestedReviewers = e.target.checked;
   }
 
+
   private handleRecentHistoryWeightInput(e: Event) {
     this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
   }
@@ -968,6 +950,7 @@ export class GrReplyDialog extends LitElement {
     const parsed = Number(e.target.value);
     if (!Number.isFinite(parsed)) return 1;
     return Math.min(10, Math.max(0, Math.trunc(parsed)));
+
   }
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
