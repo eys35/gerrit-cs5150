@@ -19,9 +19,12 @@ import logging
 import sys
 
 import cli.gc
+import cli.ingest
 
+from gerrit.db import ReviewActivityStore
 from gerrit.site import Site
 from gerrit.tasks.gc import BatchGitGarbageGollection
+from gerrit.tasks.ingest import GerritRestIngestion
 from git.gc import GitGarbageCollectionProvider
 
 logging.basicConfig(
@@ -43,6 +46,20 @@ def _run_projects_gc(args):
         projects,
         GitGarbageCollectionProvider.get(args[0].pack_refs, args[0].config),
     ).run(args[1])
+
+
+def _run_projects_ingest(args):
+    a = args[0]
+    site = Site(a.site)
+    projects = a.projects if a.projects else list(site.get_projects(a.skip_projects))
+    with ReviewActivityStore(a.db_path) as store:
+        GerritRestIngestion(
+            gerrit_url=a.gerrit_url,
+            store=store,
+            projects=projects,
+            username=a.username,
+            password=a.password,
+        ).run(incremental=a.incremental)
 
 
 def main():
@@ -101,6 +118,15 @@ def main():
         default=[],
     )
     parser_projects_gc.set_defaults(func=_run_projects_gc)
+
+    parser_projects_ingest = subparsers_projects.add_parser(
+        "ingest",
+        prog=cli.ingest.PROG,
+        description=cli.ingest.DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    cli.ingest.add_arguments(parser_projects_ingest)
+    parser_projects_ingest.set_defaults(func=_run_projects_ingest)
 
     args = parser.parse_known_args()
     args[0].func(args)
