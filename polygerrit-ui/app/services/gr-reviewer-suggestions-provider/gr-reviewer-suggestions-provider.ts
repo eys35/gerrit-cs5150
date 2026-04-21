@@ -41,6 +41,7 @@ export class GrReviewerSuggestionsProvider
   implements ReviewerSuggestionsProvider
 {
   private changes: (ChangeInfo | ParsedChangeInfo)[];
+  strategy?: string;
 
   constructor(
     private restApi: RestApiService,
@@ -110,7 +111,8 @@ export class GrReviewerSuggestionsProvider
       ? this.restApi.getChangeSuggestedReviewers(
           changeNumber,
           input,
-          throwingErrorCallback
+          throwingErrorCallback,
+          this.strategy
         )
       : this.restApi.getChangeSuggestedCCs(
           changeNumber,

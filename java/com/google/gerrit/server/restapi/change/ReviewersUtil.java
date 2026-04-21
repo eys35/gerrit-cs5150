@@ -343,7 +343,12 @@ public class ReviewersUtil {
       throws IOException, NoSuchProjectException {
     try (Timer0.Context ctx = metrics.recommendAccountsLatency.start()) {
       return reviewerRecommender.suggestReviewers(
-          reviewerState, changeNotes, suggestReviewers.getQuery(), projectState, candidateList);
+          reviewerState,
+          changeNotes,
+          suggestReviewers.getQuery(),
+          projectState,
+          candidateList,
+          suggestReviewers.strategy);
     }
   }
 

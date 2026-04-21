@@ -199,6 +199,7 @@ interface QuerySuggestedReviewersParams {
   [paramName: string]: string | undefined | null | number;
   n: number;
   q?: string;
+  strategy?: string;
   'reviewer-state': ReviewerState;
 }
 
@@ -1513,13 +1514,15 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
   getChangeSuggestedReviewers(
     changeNum: NumericChangeId,
     inputVal: string,
-    errFn?: ErrorCallback
+    errFn?: ErrorCallback,
+    strategy?: string
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
-      errFn
+      errFn,
+      strategy
     );
   }
 
@@ -1540,7 +1543,8 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     reviewerState: ReviewerState,
     changeNum: NumericChangeId,
     inputVal: string,
-    errFn?: ErrorCallback
+    errFn?: ErrorCallback,
+    strategy?: string
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1550,6 +1554,9 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     };
     if (inputVal) {
       params.q = inputVal;
+    }
+    if (strategy) {
+        params.strategy = strategy;
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({

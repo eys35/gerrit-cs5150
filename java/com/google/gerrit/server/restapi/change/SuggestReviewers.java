@@ -61,6 +61,10 @@ public class SuggestReviewers {
     this.query = q;
   }
 
+  @Option(
+      name = "--strategy")
+  public String strategy;
+
   public String getQuery() {
     return query;
   }

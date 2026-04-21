@@ -953,6 +953,7 @@ export class GrReplyDialog extends LitElement {
   private handleReviewerSortChange(e: Event) {
     const target = e.target as HTMLSelectElement;
     this.reviewerSortStrategy = target.value;
+    this.loadSuggestedReviewersInline();
   }
 
 
@@ -1058,7 +1059,9 @@ export class GrReplyDialog extends LitElement {
     const suggestions =
       await this.restApiService.getChangeSuggestedReviewers(
         this.change._number,
-        ''
+        '',
+        undefined,
+        this.reviewerSortStrategy
       );
     if (suggestions && suggestions.length > 0) {
       this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
@@ -2326,6 +2329,7 @@ export class GrReplyDialog extends LitElement {
       this.isLoggedIn,
       change
     );
+    provider.strategy = this.reviewerSortStrategy;
     return provider;
   }
 

@@ -115,9 +115,11 @@ public class ReviewerRecommender {
       @Nullable ChangeNotes changeNotes,
       String query,
       ProjectState projectState,
-      ImmutableList<Account.Id> candidateList)
+      ImmutableList<Account.Id> candidateList,
+      @Nullable String strategy)
       throws IOException, NoSuchProjectException {
     logger.atFine().log("query: %s, candidates: %s", query, candidateList);
+    logger.atInfo().log("[ALGO DEBUG] strategy = %s", strategy);
 
     Map<Account.Id, MutableDouble> candidateScores = new LinkedHashMap<>();
     candidateList.stream().forEach(id -> candidateScores.put(id, new MutableDouble(0)));
@@ -189,6 +191,42 @@ public class ReviewerRecommender {
     double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
     double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05);
+    switch (strategy == null ? "default" : strategy) {
+    case "recent":
+        w1 = 0.1;
+        w2 = 0.1;
+        w3 = 0.6;
+        w4 = 0.1;
+        w5 = 0.1;
+        break;
+
+    case "ownership":
+        w1 = 0.6;
+        w2 = 0.2;
+        w3 = 0.1;
+        w4 = 0.05;
+        w5 = 0.05;
+        break;
+
+    case "file":
+        w1 = 0.1;
+        w2 = 0.7;
+        w3 = 0.1;
+        w4 = 0.05;
+        w5 = 0.05;
+        break;
+
+    case "similar":
+        w1 = 0.1;
+        w2 = 0.3;
+        w3 = 0.1;
+        w4 = 0.4;
+        w5 = 0.1;
+        break;
+
+    default:
+        break;
+    }
     int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
     logger.atFine().log(
         "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s",
