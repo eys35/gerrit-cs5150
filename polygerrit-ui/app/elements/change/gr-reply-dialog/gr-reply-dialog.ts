@@ -179,6 +179,8 @@ export class GrReplyDialog extends LitElement {
 
   private readonly getCommentsModel = resolve(this, commentsModelToken);
 
+  private reviewerSortStrategy = 'recent';
+
   // TODO: update type to only ParsedChangeInfo
   @property({ type: Object })
   change?: ParsedChangeInfo | ChangeInfo;
@@ -898,6 +900,18 @@ export class GrReplyDialog extends LitElement {
             Use suggested reviewers
           </label>
         </div>
+             <div class="reviewerSort">
+            <span>Ranking strategy:</span>
+            <select
+                .value=${this.reviewerSortStrategy}
+                @change=${this.handleReviewerSortChange}
+            >
+                <option value="recent">Recent activity</option>
+                <option value="ownership">Code ownership</option>
+                <option value="file">File edit frequency</option>
+                <option value="similar">Similar files</option>
+            </select>
+            </div>
         <div class="reviewerWeights">
           <span>Ranking:</span>
           <span>1 = recent activity, 2 = code ownership, 3 = similar files</span>
@@ -934,6 +948,11 @@ export class GrReplyDialog extends LitElement {
   private handleUseSuggestedReviewersChanged(e: Event) {
     if (!(e.target instanceof HTMLInputElement)) return;
     this.useSuggestedReviewers = e.target.checked;
+  }
+
+  private handleReviewerSortChange(e: Event) {
+    const target = e.target as HTMLSelectElement;
+    this.reviewerSortStrategy = target.value;
   }
 
 
