@@ -501,12 +501,14 @@ public class ReviewerRecommender {
     Map<String, Integer> perCluster = new HashMap<>();
     for (Account.Id id : sortedByScore) {
       String cluster = clusterByAccount.get(id);
-      int n = perCluster.getOrDefault(cluster, 0);
-      if (n >= cap) {
-        continue;
+      if (!cluster.equals("_other")) {
+        int n = perCluster.getOrDefault(cluster, 0);
+        if (n >= cap) {
+          continue;
+        }
+        perCluster.put(cluster, n + 1);
       }
       keep.add(id);
-      perCluster.put(cluster, n + 1);
     }
     candidateScores.keySet().removeIf(id -> !keep.contains(id));
     logger.atFine().log("applyDiversityCap: cap=%s kept=%s", cap, keep.size());
