@@ -899,8 +899,28 @@ export class GrReplyDialog extends LitElement {
           </label>
         </div>
         <div class="reviewerWeights">
-          <span>Ranking:</span>
-          <span>1 = recent activity, 2 = code ownership, 3 = similar files</span>
+          <label>
+            Recent history weight
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="1"
+              .value=${String(this.reviewerRecentHistoryWeight)}
+              @input=${this.handleRecentHistoryWeightInput}
+            />
+          </label>
+          <label>
+            Contributions weight
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="1"
+              .value=${String(this.reviewerContributionsWeight)}
+              @input=${this.handleContributionsWeightInput}
+            />
+          </label>
         </div>
         ${when(
           this.useSuggestedReviewers,
