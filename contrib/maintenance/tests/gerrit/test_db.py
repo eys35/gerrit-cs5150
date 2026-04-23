@@ -340,3 +340,85 @@ def test_latest_change_updated_ignores_other_projects(store):
     store.commit()
 
     assert store.latest_change_updated("proj-b") is None
+
+
+
+# ---------------------------------------------------------------------------
+# Module edges and reviewer_module_scores
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_module_edge(store):
+    from gerrit.models import ModuleEdgeRecord
+
+    store.upsert_module_edge(
+        ModuleEdgeRecord(project="p", from_module="a", to_module="b")
+    )
+    store.commit()
+    row = store._conn.execute(
+        "SELECT * FROM module_edges WHERE project = 'p'"
+    ).fetchone()
+    assert row["from_module"] == "a"
+    assert row["to_module"] == "b"
+
+
+def test_delete_module_edges_for_project(store):
+    from gerrit.models import ModuleEdgeRecord
+
+    store.upsert_module_edge(
+        ModuleEdgeRecord(project="p", from_module="x", to_module="y")
+    )
+    store.delete_module_edges_for_project("p")
+    store.commit()
+    n = store._conn.execute("SELECT COUNT(*) FROM module_edges").fetchone()[0]
+    assert n == 0
+
+
+def test_reviewer_module_scores_sum(store):
+    from gerrit.models import ReviewerModuleScoreRecord
+
+    store.upsert_reviewer_module_score(
+        ReviewerModuleScoreRecord(
+            project="gerrit", account_id=1, module_id="java", score=2.0, updated="t1"
+        )
+    )
+    store.upsert_reviewer_module_score(
+        ReviewerModuleScoreRecord(
+            project="gerrit", account_id=1, module_id="java", score=1.0, updated="t2"
+        )
+    )
+    store.upsert_reviewer_module_score(
+        ReviewerModuleScoreRecord(
+            project="gerrit", account_id=1, module_id="polygerrit-ui", score=5.0
+        )
+    )
+    store.upsert_reviewer_module_score(
+        ReviewerModuleScoreRecord(
+            project="gerrit", account_id=2, module_id="java", score=10.0
+        )
+    )
+    store.commit()
+
+    s = store.sum_reviewer_scores_for_modules("gerrit", ["java", "polygerrit-ui"])
+    assert s[1] == pytest.approx(6.0)
+    assert s[2] == pytest.approx(10.0)
+
+
+def test_sum_reviewer_scores_empty_modules(store):
+    assert store.sum_reviewer_scores_for_modules("p", []) == {}
+
+
+def test_delete_reviewer_module_scores_for_project(store):
+    from gerrit.models import ReviewerModuleScoreRecord
+
+    store.upsert_reviewer_module_score(
+        ReviewerModuleScoreRecord(
+            project="p", account_id=1, module_id="m", score=1.0
+        )
+    )
+    store.delete_reviewer_module_scores_for_project("p")
+    store.commit()
+    n = store._conn.execute(
+        "SELECT COUNT(*) FROM reviewer_module_scores"
+    ).fetchone()[0]
+    assert n == 0

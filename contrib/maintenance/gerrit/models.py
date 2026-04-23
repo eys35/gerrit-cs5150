@@ -62,3 +62,25 @@ class CommitFileRecord:
     repo: str
     file_path: str
     change_type: str  # A=added, M=modified, D=deleted, R=renamed
+
+
+
+
+@dataclass
+class ModuleEdgeRecord:
+    """Directed dependency between v1 module IDs within one Gerrit project."""
+
+    project: str
+    from_module: str
+    to_module: str
+
+
+@dataclass
+class ReviewerModuleScoreRecord:
+    """Precomputed reviewer expertise for a module (batch job output)."""
+
+    project: str
+    account_id: int
+    module_id: str
+    score: float
+    updated: Optional[str] = None

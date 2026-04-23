@@ -1,5 +1,5 @@
 import sqlite3
-from typing import Optional
+from typing import Collection, Dict, Optional
 
 from gerrit.models import (
     ChangeRecord,
@@ -8,6 +8,8 @@ from gerrit.models import (
     FileRecord,
     LabelVoteRecord,
     ReviewerRecord,
+    ModuleEdgeRecord,
+    ReviewerModuleScoreRecord,
 )
 
 _SCHEMA = """
@@ -79,6 +81,27 @@ CREATE INDEX IF NOT EXISTS idx_reviewers_account  ON reviewers(account_id);
 CREATE INDEX IF NOT EXISTS idx_votes_account      ON label_votes(account_id);
 CREATE INDEX IF NOT EXISTS idx_commits_repo       ON commits(repo);
 CREATE INDEX IF NOT EXISTS idx_commit_files_repo  ON commit_files(repo);
+
+CREATE TABLE IF NOT EXISTS module_edges (
+    project     TEXT    NOT NULL,
+    from_module TEXT    NOT NULL,
+    to_module   TEXT    NOT NULL,
+    PRIMARY KEY (project, from_module, to_module)
+);
+CREATE TABLE IF NOT EXISTS reviewer_module_scores (
+    project     TEXT    NOT NULL,
+    account_id  INTEGER NOT NULL,
+    module_id   TEXT    NOT NULL,
+    score       REAL    NOT NULL,
+    updated     TEXT,
+    PRIMARY KEY (project, account_id, module_id)
+);
+CREATE INDEX IF NOT EXISTS idx_module_edges_project
+    ON module_edges(project);
+CREATE INDEX IF NOT EXISTS idx_reviewer_scores_project_module
+    ON reviewer_module_scores(project, module_id);
+CREATE INDEX IF NOT EXISTS idx_reviewer_scores_account
+    ON reviewer_module_scores(account_id);
 """
 
 
@@ -196,6 +219,53 @@ class ReviewActivityStore:
     def commit(self) -> None:
         assert self._conn is not None
         self._conn.commit()
+
+    def upsert_module_edge(self, r: ModuleEdgeRecord) -> None:
+        assert self._conn is not None
+        self._conn.execute(
+            """INSERT OR REPLACE INTO module_edges
+               (project, from_module, to_module)
+               VALUES (?, ?, ?)""",
+            (r.project, r.from_module, r.to_module),
+        )
+
+    def delete_module_edges_for_project(self, project: str) -> None:
+        assert self._conn is not None
+        self._conn.execute(
+            "DELETE FROM module_edges WHERE project = ?", (project,)
+        )
+
+    def upsert_reviewer_module_score(self, r: ReviewerModuleScoreRecord) -> None:
+        assert self._conn is not None
+        self._conn.execute(
+            """INSERT OR REPLACE INTO reviewer_module_scores
+               (project, account_id, module_id, score, updated)
+               VALUES (?, ?, ?, ?, ?)""",
+            (r.project, r.account_id, r.module_id, r.score, r.updated),
+        )
+
+    def delete_reviewer_module_scores_for_project(self, project: str) -> None:
+        assert self._conn is not None
+        self._conn.execute(
+            "DELETE FROM reviewer_module_scores WHERE project = ?", (project,)
+        )
+
+    def sum_reviewer_scores_for_modules(
+        self, project: str, module_ids: Collection[str]
+    ) -> Dict[int, float]:
+        """Sum precomputed scores per account for the given v1 module IDs."""
+        assert self._conn is not None
+        if not module_ids:
+            return {}
+        placeholders = ",".join("?" * len(module_ids))
+        sql = (
+            f"SELECT account_id, SUM(score) AS total "
+            f"FROM reviewer_module_scores "
+            f"WHERE project = ? AND module_id IN ({placeholders}) "
+            f"GROUP BY account_id"
+        )
+        rows = self._conn.execute(sql, (project, *module_ids)).fetchall()
+        return {int(row["account_id"]): float(row["total"]) for row in rows}
 
 
     def latest_change_updated(self, project: str) -> Optional[str]:
