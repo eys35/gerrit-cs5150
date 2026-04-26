@@ -34,22 +34,6 @@ export default {
       }
       await next();
     },
-    // Rewrite .js requests to .ts when a matching .ts source file exists.
-    // This allows the Gerrit FE Helper extension to load individual component
-    // modules, which are imported as .js by the app but only exist as .ts in
-    // the dev source tree.
-    async (context, next) => {
-      if (context.url.endsWith('.js') && !context.url.includes('gr-app')) {
-        const tsPath = path.join(
-          'polygerrit-ui/app',
-          context.url.replace(/\.js$/, '.ts')
-        );
-        if (fs.existsSync(tsPath)) {
-          context.url = context.url.replace(/\.js$/, '.ts');
-        }
-      }
-      await next();
-    },
     // The issue solved here is that our production index.html does not load
     // 'gr-app.js' as an ESM module due to our build process, but in development
     // all our source code is written as ESM modules. When using the Gerrit FE
