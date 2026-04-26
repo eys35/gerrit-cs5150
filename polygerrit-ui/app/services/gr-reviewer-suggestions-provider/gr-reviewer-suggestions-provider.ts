@@ -41,7 +41,11 @@ export class GrReviewerSuggestionsProvider
   implements ReviewerSuggestionsProvider
 {
   private changes: (ChangeInfo | ParsedChangeInfo)[];
-  strategy?: string;
+  wOwnership?: number;
+  wFileFamiliarity?: number;
+  wEngagement?: number;
+  wCrossRepo?: number;
+  wAvailability?: number;
 
   constructor(
     private restApi: RestApiService,
@@ -112,7 +116,11 @@ export class GrReviewerSuggestionsProvider
           changeNumber,
           input,
           throwingErrorCallback,
-          this.strategy
+          this.wOwnership,
+          this.wFileFamiliarity,
+          this.wEngagement,
+          this.wCrossRepo,
+          this.wAvailability
         )
       : this.restApi.getChangeSuggestedCCs(
           changeNumber,

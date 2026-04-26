@@ -199,7 +199,11 @@ interface QuerySuggestedReviewersParams {
   [paramName: string]: string | undefined | null | number;
   n: number;
   q?: string;
-  strategy?: string;
+  'w-ownership'?: number;
+  'w-file-familiarity'?: number;
+  'w-engagement'?: number;
+  'w-cross-repo'?: number;
+  'w-availability'?: number;
   'reviewer-state': ReviewerState;
 }
 
@@ -1515,14 +1519,22 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    strategy?: string
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
       errFn,
-      strategy
+      wOwnership,
+      wFileFamiliarity,
+      wEngagement,
+      wCrossRepo,
+      wAvailability
     );
   }
 
@@ -1544,7 +1556,11 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    strategy?: string
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1555,8 +1571,20 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     if (inputVal) {
       params.q = inputVal;
     }
-    if (strategy) {
-        params.strategy = strategy;
+    if (wOwnership !== undefined) {
+      params['w-ownership'] = wOwnership;
+    }
+    if (wFileFamiliarity !== undefined) {
+      params['w-file-familiarity'] = wFileFamiliarity;
+    }
+    if (wEngagement !== undefined) {
+      params['w-engagement'] = wEngagement;
+    }
+    if (wCrossRepo !== undefined) {
+      params['w-cross-repo'] = wCrossRepo;
+    }
+    if (wAvailability !== undefined) {
+      params['w-availability'] = wAvailability;
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({

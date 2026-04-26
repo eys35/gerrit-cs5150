@@ -166,7 +166,11 @@ export interface RestApiService extends Finalizable {
     changeNum: NumericChangeId,
     input: string,
     errFn?: ErrorCallback,
-    strategy?: string
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ): Promise<SuggestedReviewerInfo[] | undefined>;
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,

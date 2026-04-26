@@ -116,10 +116,13 @@ public class ReviewerRecommender {
       String query,
       ProjectState projectState,
       ImmutableList<Account.Id> candidateList,
-      @Nullable String strategy)
+      @Nullable Double wOwnership,
+      @Nullable Double wFileFamiliarity,
+      @Nullable Double wEngagement,
+      @Nullable Double wCrossRepo,
+      @Nullable Double wAvailability)
       throws IOException, NoSuchProjectException {
     logger.atFine().log("query: %s, candidates: %s", query, candidateList);
-    logger.atInfo().log("[ALGO DEBUG] strategy = %s", strategy);
 
     Map<Account.Id, MutableDouble> candidateScores = new LinkedHashMap<>();
     candidateList.stream().forEach(id -> candidateScores.put(id, new MutableDouble(0)));
@@ -191,41 +194,28 @@ public class ReviewerRecommender {
     double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
     double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05);
-    switch (strategy == null ? "default" : strategy) {
-    case "recent":
-        w1 = 0.1;
-        w2 = 0.1;
-        w3 = 0.6;
-        w4 = 0.1;
-        w5 = 0.1;
-        break;
-
-    case "ownership":
-        w1 = 0.6;
-        w2 = 0.2;
-        w3 = 0.1;
-        w4 = 0.05;
-        w5 = 0.05;
-        break;
-
-    case "file":
-        w1 = 0.1;
-        w2 = 0.7;
-        w3 = 0.1;
-        w4 = 0.05;
-        w5 = 0.05;
-        break;
-
-    case "similar":
-        w1 = 0.1;
-        w2 = 0.3;
-        w3 = 0.1;
-        w4 = 0.4;
-        w5 = 0.1;
-        break;
-
-    default:
-        break;
+    if (wOwnership != null) {
+      w1 = wOwnership;
+    }
+    if (wFileFamiliarity != null) {
+      w2 = wFileFamiliarity;
+    }
+    if (wEngagement != null) {
+      w3 = wEngagement;
+    }
+    if (wCrossRepo != null) {
+      w4 = wCrossRepo;
+    }
+    if (wAvailability != null) {
+      w5 = wAvailability;
+    }
+    double total = w1 + w2 + w3 + w4 + w5;
+    if (total > 0) {
+      w1 /= total;
+      w2 /= total;
+      w3 /= total;
+      w4 /= total;
+      w5 /= total;
     }
     int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
     logger.atFine().log(

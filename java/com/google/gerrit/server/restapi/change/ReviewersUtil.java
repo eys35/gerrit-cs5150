@@ -348,7 +348,11 @@ public class ReviewersUtil {
           suggestReviewers.getQuery(),
           projectState,
           candidateList,
-          suggestReviewers.strategy);
+          suggestReviewers.wOwnership,
+          suggestReviewers.wFileFamiliarity,
+          suggestReviewers.wEngagement,
+          suggestReviewers.wCrossRepo,
+          suggestReviewers.wAvailability);
     }
   }
 

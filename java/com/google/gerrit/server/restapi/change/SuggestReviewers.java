@@ -61,9 +61,20 @@ public class SuggestReviewers {
     this.query = q;
   }
 
-  @Option(
-      name = "--strategy")
-  public String strategy;
+  @Option(name = "--w-ownership")
+  public Double wOwnership;
+
+  @Option(name = "--w-file-familiarity")
+  public Double wFileFamiliarity;
+
+  @Option(name = "--w-engagement")
+  public Double wEngagement;
+
+  @Option(name = "--w-cross-repo")
+  public Double wCrossRepo;
+
+  @Option(name = "--w-availability")
+  public Double wAvailability;
 
   public String getQuery() {
     return query;

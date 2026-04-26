@@ -91,9 +91,9 @@ import {
   fireReload,
 } from '../../../utils/event-util';
 
-import {ErrorCallback} from '../../../api/rest';
-import {DelayedTask} from '../../../utils/async-util';
-import {Interaction, Timing} from '../../../constants/reporting';
+import { ErrorCallback } from '../../../api/rest';
+import { DelayedTask } from '../../../utils/async-util';
+import { Interaction, Timing } from '../../../constants/reporting';
 import {
   getMentionedReason,
   getReplyByReason,
@@ -178,8 +178,6 @@ export class GrReplyDialog extends LitElement {
   private readonly getChangeModel = resolve(this, changeModelToken);
 
   private readonly getCommentsModel = resolve(this, commentsModelToken);
-
-  private reviewerSortStrategy = 'recent';
 
   // TODO: update type to only ParsedChangeInfo
   @property({ type: Object })
@@ -311,12 +309,6 @@ export class GrReplyDialog extends LitElement {
 
   @state()
   useSuggestedReviewers = true;
-
-  @state()
-  reviewerRecentHistoryWeight = 1;
-
-  @state()
-  reviewerContributionsWeight = 1;
 
   @state()
   savingComments = false;
@@ -900,37 +892,21 @@ export class GrReplyDialog extends LitElement {
             Use suggested reviewers
           </label>
         </div>
-             <div class="reviewerSort">
-            <span>Ranking strategy:</span>
-            <select
-                .value=${this.reviewerSortStrategy}
-                @change=${this.handleReviewerSortChange}
-            >
-                <option value="recent">Recent activity</option>
-                <option value="ownership">Code ownership</option>
-                <option value="file">File edit frequency</option>
-                <option value="similar">Similar files</option>
-            </select>
-            </div>
-        <div class="reviewerWeights">
-          <span>Ranking:</span>
-          <span>1 = recent activity, 2 = code ownership, 3 = similar files</span>
-        </div>
         ${when(
-          this.useSuggestedReviewers,
-          () =>
-            suggestions.length === 0
-              ? html`<span class="noSuggestedReviewers"
+      this.useSuggestedReviewers,
+      () =>
+        suggestions.length === 0
+          ? html`<span class="noSuggestedReviewers"
                   >no suggested reviewers</span
                 >`
-              : html`<ul class="suggestedReviewersList">
+          : html`<ul class="suggestedReviewersList">
                   ${suggestions.map(
-                    s => html`<li class="suggestedReviewersItem">
+            s => html`<li class="suggestedReviewersItem">
                       <gr-button
                         link
                         class="suggestedReviewerName"
                         @click=${() =>
-                          this.handleSuggestedReviewerInlineClick(s.account)}
+                this.handleSuggestedReviewerInlineClick(s.account)}
                       >
                         ${s.displayName}
                       </gr-button>
@@ -938,9 +914,9 @@ export class GrReplyDialog extends LitElement {
                         >— ${s.reason}</span
                       >
                     </li>`
-                  )}
+          )}
                 </ul>`
-        )}
+    )}
       </div>
     `;
   }
@@ -948,29 +924,6 @@ export class GrReplyDialog extends LitElement {
   private handleUseSuggestedReviewersChanged(e: Event) {
     if (!(e.target instanceof HTMLInputElement)) return;
     this.useSuggestedReviewers = e.target.checked;
-  }
-
-  private handleReviewerSortChange(e: Event) {
-    const target = e.target as HTMLSelectElement;
-    this.reviewerSortStrategy = target.value;
-    this.loadSuggestedReviewersInline();
-  }
-
-
-  private handleRecentHistoryWeightInput(e: Event) {
-    this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
-  }
-
-  private handleContributionsWeightInput(e: Event) {
-    this.reviewerContributionsWeight = this.parseWeightInput(e);
-  }
-
-  private parseWeightInput(e: Event) {
-    if (!(e.target instanceof HTMLInputElement)) return 1;
-    const parsed = Number(e.target.value);
-    if (!Number.isFinite(parsed)) return 1;
-    return Math.min(10, Math.max(0, Math.trunc(parsed)));
-
   }
 
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
@@ -1060,8 +1013,7 @@ export class GrReplyDialog extends LitElement {
       await this.restApiService.getChangeSuggestedReviewers(
         this.change._number,
         '',
-        undefined,
-        this.reviewerSortStrategy
+        undefined
       );
     if (suggestions && suggestions.length > 0) {
       this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
@@ -2329,7 +2281,6 @@ export class GrReplyDialog extends LitElement {
       this.isLoggedIn,
       change
     );
-    provider.strategy = this.reviewerSortStrategy;
     return provider;
   }
 
