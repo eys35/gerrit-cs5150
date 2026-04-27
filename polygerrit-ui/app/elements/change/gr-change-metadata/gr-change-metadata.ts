@@ -185,7 +185,12 @@ export class GrChangeMetadata extends LitElement {
     relatedChangesModelToken
   );
 
-  @state() private suggestedReviewers: string[] = [];
+  @state()
+  private suggestedReviewers: {
+    name: string;
+    reason: string;
+    externalActivityBoosted?: boolean;
+  }[] = [];
 
   constructor() {
     super();
@@ -355,6 +360,11 @@ export class GrChangeMetadata extends LitElement {
         }
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
+        }
+        .suggestedReviewerExternalBadge {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--info-foreground);
         }
       `,
     ];
@@ -562,11 +572,18 @@ export class GrChangeMetadata extends LitElement {
                     class="suggestedReviewerName"
                     @click=${() => this.handleSuggestedReviewerClick()}
                   >
-                    ${suggestion}
+                    ${suggestion.name}
                   </gr-button>
                   <span class="suggestedReviewerReason"
-                    >— suggested reviewer</span
+                    >— ${suggestion.reason}</span
                   >
+                  ${when(
+                    suggestion.externalActivityBoosted === true,
+                    () =>
+                      html`<span class="suggestedReviewerExternalBadge"
+                        >external activity matched</span
+                      >`
+                  )}
                 </li>`
         )}
             </ul>`}
@@ -578,22 +595,58 @@ export class GrChangeMetadata extends LitElement {
     if (!this.change) return;
     const changeNum = this.change._number;
     if (!changeNum) return;
-    const suggestions =
-      await this.restApiService.getChangeSuggestedReviewers(
+    const [gitSuggestions, serverSuggestions] = await Promise.all([
+      this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
         throwingErrorCallback
-      );
-    if (suggestions && suggestions.length > 0) {
-      this.suggestedReviewers = suggestions
-        .slice(0, 3)
-        .map(s => ('account' in s && s.account.name ? s.account.name : ''));
-      return;
-    }
+      ),
+      this.restApiService.getChangeSuggestedReviewers(
+        changeNum,
+        '',
+        throwingErrorCallback
+      ),
+    ]);
 
-    // Do not silently fall back to hardcoded Administrators suggestions.
-    // Showing empty state exposes whether backend recommendations are wired.
-    this.suggestedReviewers = [];
+    const merged = new Map<
+      number,
+      {name: string; reason: string; externalActivityBoosted?: boolean}
+    >();
+    const addSuggestions = (
+      list: unknown[] | undefined,
+      baseReason: string,
+      external: boolean
+    ) => {
+      if (!list) return;
+      for (const s of list) {
+        if (!s || typeof s !== 'object' || !('account' in s) || !s.account) continue;
+        const account = (s as {account: AccountInfo}).account;
+        const id = account._account_id;
+        if (id === undefined) continue;
+        if (merged.has(id)) continue;
+        merged.set(id, {
+          name: account.name ?? account.email ?? `User ${id}`,
+          reason: baseReason,
+          externalActivityBoosted:
+            external ||
+            ('externalActivityBoosted' in s &&
+              (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
+        });
+        if (merged.size >= 3) return;
+      }
+    };
+
+    addSuggestions(
+      gitSuggestions as unknown[] | undefined,
+      'GitHub activity match (git-only endpoint)',
+      true
+    );
+    addSuggestions(
+      serverSuggestions as unknown[] | undefined,
+      'server suggestion (combined fallback)',
+      false
+    );
+    this.suggestedReviewers = Array.from(merged.values());
   }
 
   private handleSuggestedReviewerClick() {
