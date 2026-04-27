@@ -17,6 +17,7 @@ package com.google.gerrit.server.restapi.change;
 import static com.google.gerrit.server.config.GerritConfigListenerHelper.acceptIfChanged;
 
 import com.google.common.flogger.FluentLogger;
+import com.google.gerrit.common.Nullable;
 import com.google.gerrit.extensions.common.AccountVisibility;
 import com.google.gerrit.server.change.ReviewerModifier;
 import com.google.gerrit.server.config.ConfigKey;
@@ -42,6 +43,9 @@ public class SuggestReviewers {
   protected String query;
   protected final int maxSuggestedReviewers;
   protected boolean skipServiceUsers;
+  protected Double wRecent;
+  protected Double wContrib;
+  protected boolean externalOnly;
 
   @Option(
       name = "--limit",
@@ -76,8 +80,69 @@ public class SuggestReviewers {
   @Option(name = "--w-availability")
   public Double wAvailability;
 
+  @Option(
+      name = "--w-recent",
+      metaVar = "WEIGHT",
+      usage =
+          "per-request multiplier (>= 0) for the 'recent activity' signals in the reviewer scorer"
+              + " (scales file familiarity and engagement weights)")
+  public void setWRecent(Double w) {
+    this.wRecent = clampWeight(w);
+  }
+
+  @Option(
+      name = "--w-contrib",
+      metaVar = "WEIGHT",
+      usage =
+          "per-request multiplier (>= 0) for the 'contributions' signals in the reviewer scorer"
+              + " (scales ownership and cross-repo weights)")
+  public void setWContrib(Double w) {
+    this.wContrib = clampWeight(w);
+  }
+
   public String getQuery() {
     return query;
+  }
+
+  @Nullable
+  public Double getWRecent() {
+    if (wRecent != null) {
+      return wRecent;
+    }
+    if (wFileFamiliarity == null && wEngagement == null && wAvailability == null) {
+      return null;
+    }
+    double fileFamiliarity = wFileFamiliarity != null ? clampWeight(wFileFamiliarity) : 1d;
+    double engagement = wEngagement != null ? clampWeight(wEngagement) : 1d;
+    double availability = wAvailability != null ? clampWeight(wAvailability) : 1d;
+    return (fileFamiliarity + engagement + availability) / 3d;
+  }
+
+  @Nullable
+  public Double getWContrib() {
+    if (wContrib != null) {
+      return wContrib;
+    }
+    if (wOwnership == null && wCrossRepo == null) {
+      return null;
+    }
+    double ownership = wOwnership != null ? clampWeight(wOwnership) : 1d;
+    double crossRepo = wCrossRepo != null ? clampWeight(wCrossRepo) : 1d;
+    return (ownership + crossRepo) / 2d;
+  }
+
+  @Nullable
+  private static Double clampWeight(@Nullable Double w) {
+    if (w == null) {
+      return null;
+    }
+    if (w.isNaN() || w.isInfinite()) {
+      return null;
+    }
+    if (w < 0) {
+      return 0d;
+    }
+    return w;
   }
 
   public boolean getSuggestAccounts() {
@@ -98,6 +163,14 @@ public class SuggestReviewers {
 
   public boolean isSkipServiceUsers() {
     return skipServiceUsers;
+  }
+
+  public boolean isExternalOnly() {
+    return externalOnly;
+  }
+
+  protected void setExternalOnly(boolean externalOnly) {
+    this.externalOnly = externalOnly;
   }
 
   @Inject

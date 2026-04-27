@@ -187,6 +187,7 @@ public class ChangeRestApiModule extends RestApiModule {
     post(CHANGE_KIND, "submit").to(Submit.CurrentRevision.class);
     get(CHANGE_KIND, "submitted_together").to(SubmittedTogether.class);
     get(CHANGE_KIND, "suggest_reviewers").to(SuggestChangeReviewers.class);
+    get(CHANGE_KIND, "suggest_git_reviewers").to(SuggestGitReviewers.class);
 
     delete(VOTE_KIND).to(DeleteVote.class);
     post(VOTE_KIND, "delete").to(DeleteVote.class);

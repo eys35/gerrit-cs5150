@@ -95,7 +95,6 @@ import { changeModelToken } from '../../../models/change/change-model';
 import { relatedChangesModelToken } from '../../../models/change/related-changes-model';
 import { truncatePath } from '../../../utils/path-list-util';
 import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
-import { GroupName } from '../../../api/rest-api';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
 
@@ -186,7 +185,12 @@ export class GrChangeMetadata extends LitElement {
     relatedChangesModelToken
   );
 
-  @state() private suggestedReviewers: string[] = [];
+  @state()
+  private suggestedReviewers: {
+    name: string;
+    reason: string;
+    externalActivityBoosted?: boolean;
+  }[] = [];
 
   @state() private wOwnership = 35;
 
@@ -366,6 +370,11 @@ export class GrChangeMetadata extends LitElement {
         }
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
+        }
+        .suggestedReviewerExternalBadge {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--info-foreground);
         }
       `,
     ];
@@ -566,11 +575,18 @@ export class GrChangeMetadata extends LitElement {
                     class="suggestedReviewerName"
                     @click=${() => this.handleSuggestedReviewerClick()}
                   >
-                    ${suggestion}
+                    ${suggestion.name}
                   </gr-button>
                   <span class="suggestedReviewerReason"
-                    >— suggested reviewer</span
+                    >— ${suggestion.reason}</span
                   >
+                  ${when(
+                    suggestion.externalActivityBoosted === true,
+                    () =>
+                      html`<span class="suggestedReviewerExternalBadge"
+                        >external activity matched</span
+                      >`
+                  )}
                 </li>`
         )}
             </ul>`}
@@ -644,37 +660,70 @@ export class GrChangeMetadata extends LitElement {
     const changeNum = this.change._number;
     if (!changeNum) return;
     if (this.weightSum !== 100) return;
-    const suggestions =
-      await this.restApiService.getChangeSuggestedReviewers(
+    const weights = this.toSuggestionWeights();
+    const [gitSuggestions, serverSuggestions] = await Promise.all([
+      this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
-        undefined,
-        this.wOwnership / 100,
-        this.wFileFamiliarity / 100,
-        this.wEngagement / 100,
-        this.wCrossRepo / 100,
-        this.wAvailability / 100
-      );
-    if (suggestions && suggestions.length > 0) {
-      this.suggestedReviewers = suggestions
-        .slice(0, 3)
-        .map(s => ('account' in s && s.account.name ? s.account.name : ''));
-      return;
-    }
+        throwingErrorCallback,
+        weights
+      ),
+      this.restApiService.getChangeSuggestedReviewers(
+        changeNum,
+        '',
+        throwingErrorCallback,
+        weights
+      ),
+    ]);
 
-    // Fallback: retrieve members of the Administrators group and use them as
-    // placeholder suggestions until the new algorithmic recommender is wired
-    // through the backend.
-    const adminMembers = await this.restApiService.getGroupMembers(
-      'Administrators' as GroupName
+    const merged = new Map<
+      number,
+      {name: string; reason: string; externalActivityBoosted?: boolean}
+    >();
+    const addSuggestions = (
+      list: unknown[] | undefined,
+      baseReason: string,
+      external: boolean
+    ) => {
+      if (!list) return;
+      for (const s of list) {
+        if (!s || typeof s !== 'object' || !('account' in s) || !s.account) continue;
+        const account = (s as {account: AccountInfo}).account;
+        const id = account._account_id;
+        if (id === undefined) continue;
+        if (merged.has(id)) continue;
+        merged.set(id, {
+          name: account.name ?? account.email ?? `User ${id}`,
+          reason: baseReason,
+          externalActivityBoosted:
+            external ||
+            ('externalActivityBoosted' in s &&
+              (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
+        });
+        if (merged.size >= 3) return;
+      }
+    };
+
+    addSuggestions(
+      gitSuggestions as unknown[] | undefined,
+      'GitHub activity match (git-only endpoint)',
+      true
     );
-    if (!adminMembers || adminMembers.length === 0) {
-      this.suggestedReviewers = [];
-      return;
-    }
-    this.suggestedReviewers = adminMembers
-      .slice(0, 3)
-      .map(a => a.name ?? a.email ?? `User ${a._account_id}`);
+    addSuggestions(
+      serverSuggestions as unknown[] | undefined,
+      'server suggestion (combined fallback)',
+      false
+    );
+    this.suggestedReviewers = Array.from(merged.values());
+  }
+
+  private toSuggestionWeights() {
+    const recentSignals = this.wFileFamiliarity + this.wEngagement + this.wAvailability;
+    const contributionSignals = this.wOwnership + this.wCrossRepo;
+    return {
+      recent: recentSignals / 55,
+      contrib: contributionSignals / 45,
+    };
   }
 
   private get weightSum() {

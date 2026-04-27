@@ -115,6 +115,7 @@ import {
   GetDiffCommentsOutput,
   GetDiffRobotCommentsOutput,
   RestApiService,
+  ReviewerSuggestionWeights,
 } from './gr-rest-api';
 import {
   CommentSide,
@@ -205,6 +206,8 @@ interface QuerySuggestedReviewersParams {
   'w-cross-repo'?: number;
   'w-availability'?: number;
   'reviewer-state': ReviewerState;
+  'w-recent'?: number;
+  'w-contrib'?: number;
 }
 
 interface GetDiffParams {
@@ -1519,22 +1522,30 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    wOwnership?: number,
-    wFileFamiliarity?: number,
-    wEngagement?: number,
-    wCrossRepo?: number,
-    wAvailability?: number
+    weights?: ReviewerSuggestionWeights
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
       errFn,
-      wOwnership,
-      wFileFamiliarity,
-      wEngagement,
-      wCrossRepo,
-      wAvailability
+      weights
+    );
+  }
+
+  getChangeSuggestedGitReviewers(
+    changeNum: NumericChangeId,
+    inputVal: string,
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
+  ) {
+    return this._getChangeSuggestedGroup(
+      ReviewerState.REVIEWER,
+      changeNum,
+      inputVal,
+      errFn,
+      weights,
+      'suggest_git_reviewers'
     );
   }
 
@@ -1556,11 +1567,8 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    wOwnership?: number,
-    wFileFamiliarity?: number,
-    wEngagement?: number,
-    wCrossRepo?: number,
-    wAvailability?: number
+    weights?: ReviewerSuggestionWeights,
+    endpoint: string = 'suggest_reviewers'
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1571,26 +1579,17 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     if (inputVal) {
       params.q = inputVal;
     }
-    if (wOwnership !== undefined) {
-      params['w-ownership'] = wOwnership;
+    if (weights?.recent !== undefined && Number.isFinite(weights.recent)) {
+      params['w-recent'] = weights.recent;
     }
-    if (wFileFamiliarity !== undefined) {
-      params['w-file-familiarity'] = wFileFamiliarity;
-    }
-    if (wEngagement !== undefined) {
-      params['w-engagement'] = wEngagement;
-    }
-    if (wCrossRepo !== undefined) {
-      params['w-cross-repo'] = wCrossRepo;
-    }
-    if (wAvailability !== undefined) {
-      params['w-availability'] = wAvailability;
+    if (weights?.contrib !== undefined && Number.isFinite(weights.contrib)) {
+      params['w-contrib'] = weights.contrib;
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({
-      url: `${url}/suggest_reviewers`,
+      url: `${url}/${endpoint}`,
       params,
-      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/suggest_reviewers`,
+      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/${endpoint}`,
       errFn,
     }) as Promise<SuggestedReviewerInfo[] | undefined>;
   }

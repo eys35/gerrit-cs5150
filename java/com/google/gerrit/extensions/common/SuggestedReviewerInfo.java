@@ -19,4 +19,9 @@ public class SuggestedReviewerInfo {
   public GroupBaseInfo group;
   public int count;
   public Boolean confirm;
+  /**
+   * True when external activity (for example GitHub history ingested by maintenance tooling)
+   * contributed positively to this account's ranking for the current suggestion request.
+   */
+  public Boolean externalActivityBoosted;
 }

@@ -71,6 +71,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -235,13 +236,16 @@ public class ReviewersUtil {
     }
     logger.atFine().log("Filtered recommendations: %s", filteredRecommendations);
 
+    Set<Account.Id> externalBoostedAccounts =
+        detectExternalBoostedAccounts(changeNotes, projectState, suggestReviewers, filteredRecommendations);
     List<SuggestedReviewerInfo> suggestedReviewers =
         suggestReviewers(
             suggestReviewers,
             projectState,
             visibilityControl,
             excludeGroups,
-            filteredRecommendations);
+            filteredRecommendations,
+            externalBoostedAccounts);
     logger.atFine().log("Suggested reviewers: %s", formatSuggestedReviewers(suggestedReviewers));
     return suggestedReviewers;
   }
@@ -309,9 +313,11 @@ public class ReviewersUtil {
       ProjectState projectState,
       VisibilityControl visibilityControl,
       boolean excludeGroups,
-      List<Account.Id> filteredRecommendations)
+      List<Account.Id> filteredRecommendations,
+      Set<Account.Id> externalBoostedAccounts)
       throws PermissionBackendException, IOException {
-    List<SuggestedReviewerInfo> suggestedReviewers = loadAccounts(filteredRecommendations);
+    List<SuggestedReviewerInfo> suggestedReviewers =
+        loadAccounts(filteredRecommendations, externalBoostedAccounts);
 
     int limit = suggestReviewers.getLimit();
     if (!excludeGroups
@@ -348,11 +354,9 @@ public class ReviewersUtil {
           suggestReviewers.getQuery(),
           projectState,
           candidateList,
-          suggestReviewers.wOwnership,
-          suggestReviewers.wFileFamiliarity,
-          suggestReviewers.wEngagement,
-          suggestReviewers.wCrossRepo,
-          suggestReviewers.wAvailability);
+          suggestReviewers.getWRecent(),
+          suggestReviewers.getWContrib(),
+          suggestReviewers.isExternalOnly());
     }
   }
 
@@ -378,6 +382,46 @@ public class ReviewersUtil {
       accountLoader.fill();
       return reviewer;
     }
+  }
+
+  private List<SuggestedReviewerInfo> loadAccounts(
+      List<Account.Id> accountIds, Set<Account.Id> externalBoostedAccounts)
+      throws PermissionBackendException {
+    List<SuggestedReviewerInfo> reviewers = loadAccounts(accountIds);
+    if (externalBoostedAccounts.isEmpty()) {
+      return reviewers;
+    }
+    for (SuggestedReviewerInfo reviewer : reviewers) {
+      if (reviewer.account == null || reviewer.account._accountId == 0) {
+        continue;
+      }
+      if (externalBoostedAccounts.contains(Account.id(reviewer.account._accountId))) {
+        reviewer.externalActivityBoosted = true;
+      }
+    }
+    return reviewers;
+  }
+
+  private Set<Account.Id> detectExternalBoostedAccounts(
+      @Nullable ChangeNotes changeNotes,
+      ProjectState projectState,
+      SuggestReviewers suggestReviewers,
+      List<Account.Id> candidateIds) {
+    if (candidateIds.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<Account.Id> boosted = new HashSet<>();
+    for (Account.Id id : candidateIds) {
+      if (reviewerRecommender.externalActivityHelpsCandidate(
+          id,
+          changeNotes,
+          projectState,
+          suggestReviewers.getWRecent(),
+          suggestReviewers.getWContrib())) {
+        boosted.add(id);
+      }
+    }
+    return boosted;
   }
 
   private List<SuggestedReviewerInfo> suggestAccountGroups(
