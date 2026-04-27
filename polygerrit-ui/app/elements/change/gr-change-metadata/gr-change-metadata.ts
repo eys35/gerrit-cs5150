@@ -660,11 +660,11 @@ export class GrChangeMetadata extends LitElement {
     const changeNum = this.change._number;
     if (!changeNum) return;
     if (this.weightSum !== 100) return;
-    const [gitSuggestions, serverSuggestions] = await Promise.all([
+    const [gitResult, serverResult] = await Promise.allSettled([
       this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
-        throwingErrorCallback,
+        undefined,
         this.wOwnership / 100,
         this.wFileFamiliarity / 100,
         this.wEngagement / 100,
@@ -674,7 +674,7 @@ export class GrChangeMetadata extends LitElement {
       this.restApiService.getChangeSuggestedReviewers(
         changeNum,
         '',
-        throwingErrorCallback,
+        undefined,
         this.wOwnership / 100,
         this.wFileFamiliarity / 100,
         this.wEngagement / 100,
@@ -682,6 +682,10 @@ export class GrChangeMetadata extends LitElement {
         this.wAvailability / 100
       ),
     ]);
+    const gitSuggestions =
+      gitResult.status === 'fulfilled' ? gitResult.value : undefined;
+    const serverSuggestions =
+      serverResult.status === 'fulfilled' ? serverResult.value : undefined;
 
     const merged = new Map<
       number,

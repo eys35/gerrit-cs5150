@@ -234,6 +234,24 @@ public class ReviewersUtil {
         }
       }
     }
+    if (filteredRecommendations.isEmpty() && !sortedRecommendations.isEmpty()) {
+      // Fallback for local/dev setups with strict account visibility where canSee() can
+      // hide all otherwise valid recommendations.
+      for (Account.Id reviewer : sortedRecommendations) {
+        if (filteredRecommendations.size() >= limit) {
+          break;
+        }
+        if (suggestReviewers.isSkipServiceUsers()
+            && serviceUserClassifier.isServiceUser(reviewer)) {
+          continue;
+        }
+        if (visibilityControl.isVisibleTo(reviewer)) {
+          filteredRecommendations.add(reviewer);
+        }
+      }
+      logger.atFine().log(
+          "Visibility fallback applied (canSee bypass): %s", filteredRecommendations);
+    }
     logger.atFine().log("Filtered recommendations: %s", filteredRecommendations);
 
     Set<Account.Id> externalBoostedAccounts =

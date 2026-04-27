@@ -5,7 +5,7 @@
     "you want to attach more logins to existing accounts."
   ],
   "mappings": {
-    "1000013": "eps1lon",
-    "1000015": "eys35"
+    "1000001": "eys35",
+    "1000002": "eps1lon"
   }
 }

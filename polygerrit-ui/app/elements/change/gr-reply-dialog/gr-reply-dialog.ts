@@ -1081,8 +1081,8 @@ export class GrReplyDialog extends LitElement {
       return;
     }
 
-    const gitSuggestions =
-      await this.restApiService.getChangeSuggestedGitReviewers(
+    const [gitResult, serverResult] = await Promise.allSettled([
+      this.restApiService.getChangeSuggestedGitReviewers(
         this.change._number,
         '',
         undefined,
@@ -1091,19 +1091,23 @@ export class GrReplyDialog extends LitElement {
         this.reviewerRecentHistoryWeight,
         this.reviewerContributionsWeight,
         1
-      );
+      ),
+      this.restApiService.getChangeSuggestedReviewers(
+        this.change._number,
+        '',
+        undefined,
+        this.reviewerContributionsWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerContributionsWeight,
+        1
+      ),
+    ]);
 
+    const gitSuggestions =
+      gitResult.status === 'fulfilled' ? gitResult.value : undefined;
     const serverSuggestions =
-      await this.restApiService.getChangeSuggestedReviewers(
-        this.change._number,
-        '',
-        undefined,
-        this.reviewerContributionsWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerContributionsWeight,
-        1
-      );
+      serverResult.status === 'fulfilled' ? serverResult.value : undefined;
 
     const merged = new Map<number, (typeof this.suggestedReviewersInline)[number]>();
     const addSuggestions = (
