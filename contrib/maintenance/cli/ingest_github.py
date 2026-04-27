@@ -14,6 +14,11 @@ Java scorer expects.
 By default the ingest is incremental and walks the most recent updates
 for each repo, stopping when it crosses the latest `updated` timestamp
 already in the store for that repo + source.
+
+Alternative mode: `--by-user` walks GitHub public user events for the
+mapped logins in `--identity-map` and ingests PRs referenced by those
+events (across repos). This is useful when you care about reviewer
+activity by person rather than a fixed repo list.
 """
 
 
@@ -22,12 +27,21 @@ def add_arguments(parser):
         "--repo",
         help=(
             "GitHub repository to ingest, in `owner/name` form. "
-            "Can be specified multiple times."
+            "Can be specified multiple times. Required unless --by-user is set."
         ),
         dest="repos",
         action="append",
         default=[],
-        required=True,
+    )
+    parser.add_argument(
+        "--by-user",
+        help=(
+            "Ingest by mapped GitHub usernames instead of explicit repos. "
+            "Uses the right-hand-side logins from --identity-map."
+        ),
+        dest="by_user",
+        action="store_true",
+        default=False,
     )
     parser.add_argument(
         "--db",

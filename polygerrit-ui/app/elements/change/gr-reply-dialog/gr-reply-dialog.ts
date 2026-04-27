@@ -1082,7 +1082,18 @@ export class GrReplyDialog extends LitElement {
       return;
     }
 
-    const suggestions =
+    const gitSuggestions =
+      await this.restApiService.getChangeSuggestedGitReviewers(
+        this.change._number,
+        '',
+        undefined,
+        {
+          recent: this.reviewerRecentHistoryWeight,
+          contrib: this.reviewerContributionsWeight,
+        }
+      );
+
+    const serverSuggestions =
       await this.restApiService.getChangeSuggestedReviewers(
         this.change._number,
         '',
@@ -1092,30 +1103,45 @@ export class GrReplyDialog extends LitElement {
           contrib: this.reviewerContributionsWeight,
         }
       );
-    if (suggestions && suggestions.length > 0) {
-      this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
-        if (!('account' in s) || !s.account) return [];
-        const account = s.account;
-        return [
-          {
-            account,
-            displayName:
-              account.name ?? account.email ?? `User ${account._account_id}`,
-            reason: 'suggested reviewer',
-            externalActivityBoosted:
-              'externalActivityBoosted' in s
-                ? s.externalActivityBoosted === true
-                : false,
-          },
-        ];
-      });
-      return;
-    }
 
-    // Do not silently fall back to hardcoded Administrators suggestions.
-    // Showing an empty list makes it clear whether algorithmic suggestions are
-    // actually being produced, which is important when tuning weights.
-    this.suggestedReviewersInline = [];
+    const merged = new Map<number, (typeof this.suggestedReviewersInline)[number]>();
+    const addSuggestions = (
+      list: unknown[] | undefined,
+      baseReason: string,
+      external: boolean
+    ) => {
+      if (!list) return;
+      for (const s of list) {
+        if (!s || typeof s !== 'object' || !('account' in s) || !s.account) continue;
+        const account = s.account as AccountInfo;
+        const id = account._account_id;
+        if (id === undefined) continue;
+        if (merged.has(id)) continue;
+        merged.set(id, {
+          account,
+          displayName: account.name ?? account.email ?? `User ${id}`,
+          reason: baseReason,
+          externalActivityBoosted:
+            external ||
+            ('externalActivityBoosted' in s &&
+              (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
+        });
+        if (merged.size >= 3) return;
+      }
+    };
+
+    addSuggestions(
+      gitSuggestions as unknown[] | undefined,
+      'GitHub activity match (git-only endpoint)',
+      true
+    );
+    addSuggestions(
+      serverSuggestions as unknown[] | undefined,
+      'server suggestion (combined fallback)',
+      false
+    );
+
+    this.suggestedReviewersInline = Array.from(merged.values());
   }
 
   private renderLabels() {

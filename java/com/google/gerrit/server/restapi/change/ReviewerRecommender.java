@@ -122,7 +122,7 @@ public class ReviewerRecommender {
       ImmutableList<Account.Id> candidateList)
       throws IOException, NoSuchProjectException {
     return suggestReviewers(
-        reviewerState, changeNotes, query, projectState, candidateList, null, null);
+        reviewerState, changeNotes, query, projectState, candidateList, null, null, false);
   }
 
   /**
@@ -143,26 +143,54 @@ public class ReviewerRecommender {
       @Nullable Double wRecent,
       @Nullable Double wContrib)
       throws IOException, NoSuchProjectException {
+    return suggestReviewers(
+        reviewerState,
+        changeNotes,
+        query,
+        projectState,
+        candidateList,
+        wRecent,
+        wContrib,
+        false);
+  }
+
+  public List<Account.Id> suggestReviewers(
+      ReviewerState reviewerState,
+      @Nullable ChangeNotes changeNotes,
+      String query,
+      ProjectState projectState,
+      ImmutableList<Account.Id> candidateList,
+      @Nullable Double wRecent,
+      @Nullable Double wContrib,
+      boolean externalOnly)
+      throws IOException, NoSuchProjectException {
     logger.atFine().log(
-        "query: %s, candidates: %s, wRecent: %s, wContrib: %s",
-        query, candidateList, wRecent, wContrib);
+        "query: %s, candidates: %s, wRecent: %s, wContrib: %s, externalOnly: %s",
+        query, candidateList, wRecent, wContrib, externalOnly);
 
     Map<Account.Id, MutableDouble> candidateScores = new LinkedHashMap<>();
     candidateList.stream().forEach(id -> candidateScores.put(id, new MutableDouble(0)));
 
-    // Get the user's recent changes and add them as candidates
-    double recentChangeCandidatesWeight = config.getInt("addReviewer", "baseWeight", 1);
-    logger.atFine().log("recentChangeCandidatesWeight: %s", recentChangeCandidatesWeight);
-    ImmutableList<ChangeData> changes =
-        queryRecentChanges(ChangePredicates.owner(identifiedUser.get().getAccountId()));
-    getMatchingReviewers(changes, query)
-        .forEach(
-            reviewerCandidate ->
-                candidateScores
-                    .computeIfAbsent(reviewerCandidate, (ignored) -> new MutableDouble(0))
-                    .add(recentChangeCandidatesWeight));
+    ImmutableList<ChangeData> changes = ImmutableList.of();
+    if (externalOnly) {
+      candidateScores.clear();
+      int externalSeedLimit = config.getInt("algorithmicReviewer", "externalSeedLimit", 1000);
+      externalActivityStore.topAccountsByActivity(externalSeedLimit).stream()
+          .forEach(id -> candidateScores.put(id, new MutableDouble(0)));
+    } else {
+      // Get the user's recent changes and add them as candidates
+      double recentChangeCandidatesWeight = config.getInt("addReviewer", "baseWeight", 1);
+      logger.atFine().log("recentChangeCandidatesWeight: %s", recentChangeCandidatesWeight);
+      changes = queryRecentChanges(ChangePredicates.owner(identifiedUser.get().getAccountId()));
+      getMatchingReviewers(changes, query)
+          .forEach(
+              reviewerCandidate ->
+                  candidateScores
+                      .computeIfAbsent(reviewerCandidate, (ignored) -> new MutableDouble(0))
+                      .add(recentChangeCandidatesWeight));
+    }
 
-    if (Strings.isNullOrEmpty(query) && candidateScores.isEmpty()) {
+    if (!externalOnly && Strings.isNullOrEmpty(query) && candidateScores.isEmpty()) {
       // There are no candidates for the default reviewer suggestion (= suggestion for an empty
       // query). Fallback to suggesting the reviewers of recent changes in the same project.
       changes = queryRecentChanges(ChangePredicates.project(projectState.getNameKey()));
@@ -258,56 +286,58 @@ public class ReviewerRecommender {
     applyLoadPenalties(candidateScores, projectHistory, w5);
     applyDiversityCap(candidateScores, targetFiles, projectHistory, diversityCap);
 
-    // Send the query along with a candidate list to all plugins and merge the
-    // results. Plugins don't necessarily need to use the candidates list, they
-    // can also return non-candidate account ids.
-    List<Callable<Set<SuggestedReviewer>>> tasks =
-        new ArrayList<>(reviewerSuggestionPluginMap.plugins().size());
-    List<Double> weights = new ArrayList<>(reviewerSuggestionPluginMap.plugins().size());
+    if (!externalOnly) {
+      // Send the query along with a candidate list to all plugins and merge the
+      // results. Plugins don't necessarily need to use the candidates list, they
+      // can also return non-candidate account ids.
+      List<Callable<Set<SuggestedReviewer>>> tasks =
+          new ArrayList<>(reviewerSuggestionPluginMap.plugins().size());
+      List<Double> weights = new ArrayList<>(reviewerSuggestionPluginMap.plugins().size());
 
-    reviewerSuggestionPluginMap.runEach(
-        extension -> {
-          tasks.add(
-              () ->
-                  extension
-                      .get()
-                      .suggestReviewers(
-                          projectState.getNameKey(),
-                          changeNotes != null ? changeNotes.getChangeId() : null,
-                          query,
-                          candidateScores.keySet()));
-          String key = extension.getPluginName() + "-" + extension.getExportName();
-          String pluginWeight = config.getString("addReviewer", key, "weight");
-          if (Strings.isNullOrEmpty(pluginWeight)) {
-            pluginWeight = "1";
-          }
-          logger.atFine().log("weight for %s: %s", key, pluginWeight);
-          try {
-            weights.add(Double.parseDouble(pluginWeight));
-          } catch (NumberFormatException e) {
-            logger.atSevere().withCause(e).log("Exception while parsing weight for %s", key);
-            weights.add(1d);
-          }
-        });
+      reviewerSuggestionPluginMap.runEach(
+          extension -> {
+            tasks.add(
+                () ->
+                    extension
+                        .get()
+                        .suggestReviewers(
+                            projectState.getNameKey(),
+                            changeNotes != null ? changeNotes.getChangeId() : null,
+                            query,
+                            candidateScores.keySet()));
+            String key = extension.getPluginName() + "-" + extension.getExportName();
+            String pluginWeight = config.getString("addReviewer", key, "weight");
+            if (Strings.isNullOrEmpty(pluginWeight)) {
+              pluginWeight = "1";
+            }
+            logger.atFine().log("weight for %s: %s", key, pluginWeight);
+            try {
+              weights.add(Double.parseDouble(pluginWeight));
+            } catch (NumberFormatException e) {
+              logger.atSevere().withCause(e).log("Exception while parsing weight for %s", key);
+              weights.add(1d);
+            }
+          });
 
-    try {
-      List<Future<Set<SuggestedReviewer>>> futures =
-          executor.invokeAll(tasks, PLUGIN_QUERY_TIMEOUT, TimeUnit.MILLISECONDS);
-      Iterator<Double> weightIterator = weights.iterator();
-      for (Future<Set<SuggestedReviewer>> f : futures) {
-        double weight = weightIterator.next();
-        for (SuggestedReviewer s : f.get()) {
-          if (candidateScores.containsKey(s.account)) {
-            candidateScores.get(s.account).add(s.score * weight);
-          } else {
-            candidateScores.put(s.account, new MutableDouble(s.score * weight));
+      try {
+        List<Future<Set<SuggestedReviewer>>> futures =
+            executor.invokeAll(tasks, PLUGIN_QUERY_TIMEOUT, TimeUnit.MILLISECONDS);
+        Iterator<Double> weightIterator = weights.iterator();
+        for (Future<Set<SuggestedReviewer>> f : futures) {
+          double weight = weightIterator.next();
+          for (SuggestedReviewer s : f.get()) {
+            if (candidateScores.containsKey(s.account)) {
+              candidateScores.get(s.account).add(s.score * weight);
+            } else {
+              candidateScores.put(s.account, new MutableDouble(s.score * weight));
+            }
           }
         }
+        logger.atFine().log("Candidate scores: %s", candidateScores);
+      } catch (ExecutionException | InterruptedException e) {
+        logger.atSevere().withCause(e).log("Exception while suggesting reviewers");
+        return ImmutableList.of();
       }
-      logger.atFine().log("Candidate scores: %s", candidateScores);
-    } catch (ExecutionException | InterruptedException e) {
-      logger.atSevere().withCause(e).log("Exception while suggesting reviewers");
-      return ImmutableList.of();
     }
 
     if (changeNotes != null) {

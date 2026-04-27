@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Template: map Gerrit Account.Id (as string) -> GitHub login.",
+    "Find Account.Id by opening a user in Gerrit and checking the API:",
+    "  curl -u '<user>:<http_password>' http://localhost:8080/a/accounts/<username>/detail",
+    "Then copy the `_account_id` value into the key below.",
+    "Only mapped GitHub logins are imported by ingest-github."
+  ],
+  "mappings": {
+    "1000013": "octocat",
+    "1000014": "torvalds",
+    "1000015": "gaearon",
+    "1234567": "replace_with_real_github_login"
+  }
+}

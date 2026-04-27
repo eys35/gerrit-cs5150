@@ -355,7 +355,8 @@ public class ReviewersUtil {
           projectState,
           candidateList,
           suggestReviewers.getWRecent(),
-          suggestReviewers.getWContrib());
+          suggestReviewers.getWContrib(),
+          suggestReviewers.isExternalOnly());
     }
   }
 

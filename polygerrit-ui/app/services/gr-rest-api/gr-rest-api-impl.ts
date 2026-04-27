@@ -1528,6 +1528,22 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     );
   }
 
+  getChangeSuggestedGitReviewers(
+    changeNum: NumericChangeId,
+    inputVal: string,
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
+  ) {
+    return this._getChangeSuggestedGroup(
+      ReviewerState.REVIEWER,
+      changeNum,
+      inputVal,
+      errFn,
+      weights,
+      'suggest_git_reviewers'
+    );
+  }
+
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,
     inputVal: string,
@@ -1546,7 +1562,8 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights
+    weights?: ReviewerSuggestionWeights,
+    endpoint: string = 'suggest_reviewers'
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1565,9 +1582,9 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({
-      url: `${url}/suggest_reviewers`,
+      url: `${url}/${endpoint}`,
       params,
-      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/suggest_reviewers`,
+      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/${endpoint}`,
       errFn,
     }) as Promise<SuggestedReviewerInfo[] | undefined>;
   }

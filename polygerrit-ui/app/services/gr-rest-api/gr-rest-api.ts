@@ -182,6 +182,12 @@ export interface RestApiService extends Finalizable {
     errFn?: ErrorCallback,
     weights?: ReviewerSuggestionWeights
   ): Promise<SuggestedReviewerInfo[] | undefined>;
+  getChangeSuggestedGitReviewers(
+    changeNum: NumericChangeId,
+    input: string,
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
+  ): Promise<SuggestedReviewerInfo[] | undefined>;
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,
     input: string,

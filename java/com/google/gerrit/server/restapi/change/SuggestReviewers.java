@@ -45,6 +45,7 @@ public class SuggestReviewers {
   protected boolean skipServiceUsers;
   protected Double wRecent;
   protected Double wContrib;
+  protected boolean externalOnly;
 
   @Option(
       name = "--limit",
@@ -130,6 +131,14 @@ public class SuggestReviewers {
 
   public boolean isSkipServiceUsers() {
     return skipServiceUsers;
+  }
+
+  public boolean isExternalOnly() {
+    return externalOnly;
+  }
+
+  protected void setExternalOnly(boolean externalOnly) {
+    this.externalOnly = externalOnly;
   }
 
   @Inject

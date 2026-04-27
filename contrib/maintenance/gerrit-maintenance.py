@@ -74,6 +74,8 @@ def _run_projects_ingest_github(args):
     a = args[0]
     identity_map = GitHubIdentityMap.from_file(a.identity_map_path)
     token = a.token or os.environ.get("GITHUB_TOKEN")
+    if not a.by_user and not a.repos:
+        raise ValueError("ingest-github requires at least one --repo unless --by-user is set")
     with ReviewActivityStore(a.db_path) as store:
         GitHubRestIngestion(
             repos=a.repos,
@@ -81,7 +83,11 @@ def _run_projects_ingest_github(args):
             identity_map=identity_map,
             token=token,
             base_url=a.base_url,
-        ).run(incremental=a.incremental, max_prs_per_repo=a.max_prs_per_repo)
+        ).run(
+            incremental=a.incremental,
+            max_prs_per_repo=a.max_prs_per_repo,
+            by_user=a.by_user,
+        )
 
 
 def _run_projects_export_external_activity(args):

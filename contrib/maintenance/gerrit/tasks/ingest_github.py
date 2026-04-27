@@ -107,7 +107,12 @@ class GitHubRestIngestion:
         elif token == "":
             logger.warning("Empty GitHub token treated as anonymous (60 req/hr cap).")
 
-    def run(self, incremental: bool = True, max_prs_per_repo: int = 200) -> None:
+    def run(
+        self, incremental: bool = True, max_prs_per_repo: int = 200, by_user: bool = False
+    ) -> None:
+        if by_user:
+            self._run_by_user(max_prs_per_user=max_prs_per_repo)
+            return
         for repo in self.repos:
             try:
                 owner, name = repo.split("/", 1)
@@ -124,6 +129,53 @@ class GitHubRestIngestion:
             else:
                 logger.info("Ingesting %s (full)", repo)
             self._ingest_repo(owner, name, since=since, max_prs=max_prs_per_repo)
+
+    def _run_by_user(self, max_prs_per_user: int) -> None:
+        logins = self.identity_map.github_logins()
+        if not logins:
+            logger.warning(
+                "No mapped GitHub logins in identity map; nothing to ingest in --by-user mode."
+            )
+            return
+        for login in logins:
+            logger.info("Ingesting by user %s (recent public events)", login)
+            self._ingest_user(login, max_prs=max_prs_per_user)
+
+    def _ingest_user(self, login: str, max_prs: int) -> None:
+        ingested = 0
+        seen_pr_urls = set()
+        page = 1
+        # /users/{login}/events/public exposes only recent public activity, so
+        # this mode is naturally bounded and doesn't need incremental state.
+        while ingested < max_prs:
+            events = self._get(
+                f"/users/{login}/events/public",
+                {"per_page": _PER_PAGE, "page": page},
+            )
+            if not events:
+                break
+            for ev in events:
+                pr_url = _event_pr_api_url(ev)
+                if not pr_url or pr_url in seen_pr_urls:
+                    continue
+                seen_pr_urls.add(pr_url)
+                pr = self._get_absolute(pr_url)
+                if not pr:
+                    continue
+                repo_full = ((pr.get("base") or {}).get("repo") or {}).get("full_name") or ""
+                try:
+                    owner, name = repo_full.split("/", 1)
+                except ValueError:
+                    continue
+                self._process_pr(owner, name, pr)
+                ingested += 1
+                if ingested >= max_prs:
+                    break
+            self.store.commit()
+            if len(events) < _PER_PAGE:
+                break
+            page += 1
+        logger.info("  Done: %d PRs ingested for user %s", ingested, login)
 
     # --- repo-level walk ------------------------------------------------
 
@@ -309,6 +361,12 @@ class GitHubRestIngestion:
         url = self.base_url + path
         if params:
             url += "?" + urllib.parse.urlencode(params)
+        return self._get_url(url)
+
+    def _get_absolute(self, url: str):
+        return self._get_url(url)
+
+    def _get_url(self, url: str):
         req = urllib.request.Request(url)
         req.add_header("Accept", "application/vnd.github+json")
         req.add_header("X-GitHub-Api-Version", "2022-11-28")
@@ -392,3 +450,15 @@ def _translate_file_status(status: Optional[str]) -> str:
 def _legacy_basic_auth_header(username: str, token: str) -> str:
     creds = base64.b64encode(f"{username}:{token}".encode()).decode()
     return f"Basic {creds}"
+
+
+def _event_pr_api_url(event: dict) -> Optional[str]:
+    """Extract the PR API URL from a user-event payload, if present."""
+    payload = event.get("payload") or {}
+    pr = payload.get("pull_request") or {}
+    url = pr.get("url")
+    if url:
+        return url
+    issue = payload.get("issue") or {}
+    issue_pr = issue.get("pull_request") or {}
+    return issue_pr.get("url")

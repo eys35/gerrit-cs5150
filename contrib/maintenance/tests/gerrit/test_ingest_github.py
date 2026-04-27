@@ -355,3 +355,71 @@ def test_identity_map_loads_from_file(tmp_path):
 def test_identity_map_missing_file_returns_empty(tmp_path):
     m = GitHubIdentityMap.from_file(str(tmp_path / "does-not-exist.json"))
     assert len(m) == 0
+
+
+def test_by_user_ingests_prs_from_mapped_login_events(store):
+    ingestion = GitHubRestIngestion(
+        repos=[],
+        store=store,
+        identity_map=GitHubIdentityMap({1003: "gaearon"}),
+        token="fake-token",
+    )
+
+    # events/public yields a PR URL; subsequent pages are empty.
+    event_pages = {
+        "/users/gaearon/events/public": [
+            [
+                {
+                    "type": "PullRequestReviewEvent",
+                    "payload": {
+                        "pull_request": {
+                            "url": "https://api.github.com/repos/acme/widgets/pulls/77"
+                        }
+                    },
+                }
+            ],
+            [],
+        ]
+    }
+    pr_payload = _make_pr(number=77, user="gaearon")
+    pr_payload["base"] = {"ref": "main", "repo": {"full_name": "acme/widgets"}}
+
+    def fake_get(path, params=None):
+        q = event_pages.get(path)
+        if q is None:
+            return []
+        return q.pop(0) if q else []
+
+    def fake_get_abs(url):
+        if url == "https://api.github.com/repos/acme/widgets/pulls/77":
+            return pr_payload
+        return None
+
+    ingestion._get = fake_get
+    ingestion._get_absolute = fake_get_abs
+    ingestion._process_files = lambda *args, **kwargs: None
+    ingestion._process_requested_reviewers = lambda *args, **kwargs: None
+    ingestion._process_reviews = lambda *args, **kwargs: None
+
+    ingestion.run(by_user=True, incremental=False, max_prs_per_repo=10)
+
+    row = store._conn.execute(
+        "SELECT owner_account_id, owner_name, source FROM changes "
+        "WHERE change_id = 'gh:acme/widgets#77'"
+    ).fetchone()
+    assert row is not None
+    assert row["owner_account_id"] == 1003
+    assert row["owner_name"] == "gaearon"
+    assert row["source"] == "github"
+
+
+def test_by_user_handles_empty_identity_map(store):
+    ingestion = GitHubRestIngestion(
+        repos=[],
+        store=store,
+        identity_map=GitHubIdentityMap.empty(),
+        token="fake-token",
+    )
+    ingestion.run(by_user=True, incremental=False, max_prs_per_repo=10)
+    count = store._conn.execute("SELECT COUNT(*) AS n FROM changes").fetchone()["n"]
+    assert count == 0
