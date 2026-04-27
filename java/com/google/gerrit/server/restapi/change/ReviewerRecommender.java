@@ -20,6 +20,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.flogger.FluentLogger;
 import com.google.gerrit.common.Nullable;
@@ -87,6 +88,7 @@ public class ReviewerRecommender {
   private final AccountCache accountCache;
   private final GroupMembers groupMembers;
   private final ChangeData.Factory changeDataFactory;
+  private final ExternalActivityStore externalActivityStore;
 
   @Inject
   ReviewerRecommender(
@@ -98,7 +100,8 @@ public class ReviewerRecommender {
       @GerritServerConfig Config config,
       AccountCache accountCache,
       GroupMembers groupMembers,
-      ChangeData.Factory changeDataFactory) {
+      ChangeData.Factory changeDataFactory,
+      ExternalActivityStore externalActivityStore) {
     this.config = config;
     this.queryProvider = queryProvider;
     this.identifiedUser = identifiedUser;
@@ -108,6 +111,7 @@ public class ReviewerRecommender {
     this.accountCache = accountCache;
     this.groupMembers = groupMembers;
     this.changeDataFactory = changeDataFactory;
+    this.externalActivityStore = externalActivityStore;
   }
 
   public List<Account.Id> suggestReviewers(
@@ -117,7 +121,31 @@ public class ReviewerRecommender {
       ProjectState projectState,
       ImmutableList<Account.Id> candidateList)
       throws IOException, NoSuchProjectException {
-    logger.atFine().log("query: %s, candidates: %s", query, candidateList);
+    return suggestReviewers(
+        reviewerState, changeNotes, query, projectState, candidateList, null, null);
+  }
+
+  /**
+   * Suggest reviewers with optional per-request weight overrides.
+   *
+   * <p>{@code wRecent} and {@code wContrib} (both nullable) are user-provided multipliers for the
+   * algorithmic scorer's "recent activity" and "contributions" signal groups respectively. {@code
+   * null} leaves the server's configured weights ({@code [algorithmicReviewer] w1..w5}) untouched;
+   * a value of {@code 1.0} is a no-op; {@code 0} disables the signal group; larger values amplify
+   * it. Values are pre-clamped to {@code >= 0} by the caller.
+   */
+  public List<Account.Id> suggestReviewers(
+      ReviewerState reviewerState,
+      @Nullable ChangeNotes changeNotes,
+      String query,
+      ProjectState projectState,
+      ImmutableList<Account.Id> candidateList,
+      @Nullable Double wRecent,
+      @Nullable Double wContrib)
+      throws IOException, NoSuchProjectException {
+    logger.atFine().log(
+        "query: %s, candidates: %s, wRecent: %s, wContrib: %s",
+        query, candidateList, wRecent, wContrib);
 
     Map<Account.Id, MutableDouble> candidateScores = new LinkedHashMap<>();
     candidateList.stream().forEach(id -> candidateScores.put(id, new MutableDouble(0)));
@@ -143,6 +171,14 @@ public class ReviewerRecommender {
       // getMatchingReviewers here, but we can include the reviewers directly.
       getReviewers(changes)
           .forEach(reviewerId -> candidateScores.put(reviewerId, new MutableDouble(0)));
+
+      if (candidateScores.isEmpty()) {
+        // Still empty on a fresh demo / new project. Seed from external-activity accounts so the
+        // inline "Use suggested reviewers" box can populate without requiring typed query input.
+        int externalSeedLimit = config.getInt("algorithmicReviewer", "externalSeedLimit", 25);
+        externalActivityStore.topAccountsByActivity(externalSeedLimit).stream()
+            .forEach(id -> candidateScores.put(id, new MutableDouble(0)));
+      }
 
       if (candidateScores.isEmpty()) {
         // There are still no candidates for the default reviewer suggestion. Fallback to suggesting
@@ -190,15 +226,35 @@ public class ReviewerRecommender {
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
     double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05);
     int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
+
+    // Apply per-request weight overrides from the UI sliders. `wRecent` scales the recent-activity
+    // signals (file familiarity and engagement); `wContrib` scales the contributions signals
+    // (project ownership and cross-repo overlap). w5 (load penalty) is intentionally untouched.
+    if (wRecent != null) {
+      w2 *= wRecent;
+      w3 *= wRecent;
+    }
+    if (wContrib != null) {
+      w1 *= wContrib;
+      w4 *= wContrib;
+    }
+
     logger.atFine().log(
-        "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s",
-        w1, w2, w3, w4, w5, diversityCap);
+        "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s"
+            + " (wRecent=%s wContrib=%s)",
+        w1, w2, w3, w4, w5, diversityCap, wRecent, wContrib);
 
     applyOwnershipScores(candidateScores, projectOwners, w1);
     applyFileFamiliarityScores(candidateScores, targetFiles, projectHistory, w2);
     ImmutableList<ChangeData> engagementHistory = dedupeByChangeId(ownerHistory, projectHistory);
     applyEngagementScores(candidateScores, engagementHistory, w3);
     applyCrossRepoScores(candidateScores, targetFiles, ownerHistory, targetProject, w4);
+    // External-activity (e.g. GitHub) signals contribute to the same weighted buckets, so the UI
+    // sliders' wRecent/wContrib multipliers already scale them. The store is empty (and these are
+    // no-ops) unless `algorithmicReviewer.externalActivityFile` is configured and populated.
+    applyExternalFileFamiliarityScores(candidateScores, targetFiles, w2);
+    applyExternalEngagementScores(candidateScores, w3);
+    applyExternalCrossRepoScores(candidateScores, targetFiles, targetProject, w4);
     applyLoadPenalties(candidateScores, projectHistory, w5);
     applyDiversityCap(candidateScores, targetFiles, projectHistory, diversityCap);
 
@@ -448,6 +504,91 @@ public class ReviewerRecommender {
     }
   }
 
+  /**
+   * External-source counterpart of {@link #applyFileFamiliarityScores}: adds {@code weight} per
+   * file-path overlap recorded in the external activity snapshot. Cheap loop because the snapshot
+   * is pre-indexed by {@code (Account.Id, file_path)}.
+   */
+  private void applyExternalFileFamiliarityScores(
+      Map<Account.Id, MutableDouble> candidateScores,
+      ImmutableSet<String> targetFiles,
+      double weight) {
+    if (externalActivityStore.isEmpty() || targetFiles.isEmpty() || candidateScores.isEmpty()) {
+      return;
+    }
+    logger.atFine().log("applyExternalFileFamiliarityScores: weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      ImmutableListMultimap<String, ExternalActivityStore.Row> byFile =
+          externalActivityStore.rowsByFileFor(id);
+      if (byFile.isEmpty()) {
+        continue;
+      }
+      int overlap = 0;
+      for (String path : targetFiles) {
+        if (byFile.containsKey(path)) {
+          overlap += Math.min(MAX_FILE_OVERLAP_PER_CHANGE, byFile.get(path).size());
+        }
+      }
+      if (overlap > 0) {
+        candidateScores.get(id).add(weight * overlap);
+      }
+    }
+  }
+
+  /** External-source counterpart of {@link #applyEngagementScores}, scored on non-zero votes. */
+  private void applyExternalEngagementScores(
+      Map<Account.Id, MutableDouble> candidateScores, double weight) {
+    if (externalActivityStore.isEmpty() || candidateScores.isEmpty()) {
+      return;
+    }
+    logger.atFine().log("applyExternalEngagementScores: weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      double votes = 0;
+      for (ExternalActivityStore.Row r : externalActivityStore.rowsFor(id)) {
+        if (r.vote != 0) {
+          votes += 1;
+        }
+      }
+      if (votes > 0) {
+        candidateScores.get(id).add(weight * Math.log1p(votes));
+      }
+    }
+  }
+
+  /**
+   * External-source counterpart of {@link #applyCrossRepoScores}. We don't have the change-author
+   * relationship here (unlike Gerrit NoteDb), so the proxy is "did the candidate review files
+   * matching the target files in any *other* project?" — exactly the cross-repo signal we want.
+   */
+  private void applyExternalCrossRepoScores(
+      Map<Account.Id, MutableDouble> candidateScores,
+      ImmutableSet<String> targetFiles,
+      Project.NameKey targetProject,
+      double weight) {
+    if (externalActivityStore.isEmpty() || targetFiles.isEmpty() || candidateScores.isEmpty()) {
+      return;
+    }
+    logger.atFine().log("applyExternalCrossRepoScores: weight=%s", weight);
+    String targetProjectName = targetProject.get();
+    for (Account.Id id : candidateScores.keySet()) {
+      int overlap = 0;
+      for (ExternalActivityStore.Row r : externalActivityStore.rowsFor(id)) {
+        if (r.project == null || r.project.equals(targetProjectName)) {
+          continue;
+        }
+        if (targetFiles.contains(r.filePath)) {
+          overlap += 1;
+          if (overlap >= MAX_FILE_OVERLAP_PER_CHANGE) {
+            break;
+          }
+        }
+      }
+      if (overlap > 0) {
+        candidateScores.get(id).add(weight * overlap);
+      }
+    }
+  }
+
   /** Penalize candidates who already hold many reviewer slots on open changes in this project. */
   private void applyLoadPenalties(
       Map<Account.Id, MutableDouble> candidateScores,
@@ -530,6 +671,56 @@ public class ReviewerRecommender {
       }
     }
     return best != null ? best : "_other";
+  }
+
+  /**
+   * Returns whether external activity contributes a positive score for {@code candidate} for this
+   * request context. Used to annotate reviewer suggestions with explainability metadata.
+   */
+  boolean externalActivityHelpsCandidate(
+      Account.Id candidate,
+      @Nullable ChangeNotes changeNotes,
+      ProjectState projectState,
+      @Nullable Double wRecent,
+      @Nullable Double wContrib) {
+    if (externalActivityStore.isEmpty()) {
+      return false;
+    }
+    double w2 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w2"), 0.30);
+    double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
+    double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
+    if (wRecent != null) {
+      w2 *= wRecent;
+      w3 *= wRecent;
+    }
+    if (wContrib != null) {
+      w4 *= wContrib;
+    }
+
+    ImmutableSet<String> targetFiles = ImmutableSet.of();
+    if (changeNotes != null) {
+      ChangeData targetCd = changeDataFactory.create(changeNotes.load());
+      targetFiles = ImmutableSet.copyOf(targetCd.currentFilePaths());
+    }
+    final ImmutableSet<String> files = targetFiles;
+    String targetProjectName = projectState.getName();
+    ImmutableListMultimap<String, ExternalActivityStore.Row> byFile =
+        externalActivityStore.rowsByFileFor(candidate);
+    ImmutableList<ExternalActivityStore.Row> rows = externalActivityStore.rowsFor(candidate);
+
+    boolean fileFamiliarity =
+        w2 > 0 && !files.isEmpty() && files.stream().anyMatch(byFile::containsKey);
+    boolean engagement = w3 > 0 && rows.stream().anyMatch(r -> r.vote != 0);
+    boolean crossRepo =
+        w4 > 0
+            && !files.isEmpty()
+            && rows.stream()
+                .anyMatch(
+                    r ->
+                        r.project != null
+                            && !r.project.equals(targetProjectName)
+                            && files.contains(r.filePath));
+    return fileFamiliarity || engagement || crossRepo;
   }
 
   private static double parseConfigDouble(String value, double defaultValue) {

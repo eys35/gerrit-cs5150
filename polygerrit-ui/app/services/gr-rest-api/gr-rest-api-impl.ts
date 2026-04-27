@@ -115,6 +115,7 @@ import {
   GetDiffCommentsOutput,
   GetDiffRobotCommentsOutput,
   RestApiService,
+  ReviewerSuggestionWeights,
 } from './gr-rest-api';
 import {
   CommentSide,
@@ -200,6 +201,8 @@ interface QuerySuggestedReviewersParams {
   n: number;
   q?: string;
   'reviewer-state': ReviewerState;
+  'w-recent'?: number;
+  'w-contrib'?: number;
 }
 
 interface GetDiffParams {
@@ -1513,13 +1516,15 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
   getChangeSuggestedReviewers(
     changeNum: NumericChangeId,
     inputVal: string,
-    errFn?: ErrorCallback
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
-      errFn
+      errFn,
+      weights
     );
   }
 
@@ -1540,7 +1545,8 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     reviewerState: ReviewerState,
     changeNum: NumericChangeId,
     inputVal: string,
-    errFn?: ErrorCallback
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1550,6 +1556,12 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     };
     if (inputVal) {
       params.q = inputVal;
+    }
+    if (weights?.recent !== undefined && Number.isFinite(weights.recent)) {
+      params['w-recent'] = weights.recent;
+    }
+    if (weights?.contrib !== undefined && Number.isFinite(weights.contrib)) {
+      params['w-contrib'] = weights.contrib;
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({

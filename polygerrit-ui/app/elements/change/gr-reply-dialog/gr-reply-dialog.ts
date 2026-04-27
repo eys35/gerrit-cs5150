@@ -92,7 +92,7 @@ import {
 } from '../../../utils/event-util';
 
 import {ErrorCallback} from '../../../api/rest';
-import {DelayedTask} from '../../../utils/async-util';
+import {debounce, DelayedTask} from '../../../utils/async-util';
 import {Interaction, Timing} from '../../../constants/reporting';
 import {
   getMentionedReason,
@@ -305,6 +305,7 @@ export class GrReplyDialog extends LitElement {
     account: AccountInfo;
     displayName: string;
     reason: string;
+    externalActivityBoosted?: boolean;
   }[] = [];
 
   @state()
@@ -315,6 +316,8 @@ export class GrReplyDialog extends LitElement {
 
   @state()
   reviewerContributionsWeight = 1;
+
+  private reviewerWeightRefreshTask?: DelayedTask;
 
   @state()
   savingComments = false;
@@ -635,6 +638,11 @@ export class GrReplyDialog extends LitElement {
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
         }
+        .suggestedReviewerExternalBadge {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--info-foreground);
+        }
       `,
     ];
   }
@@ -810,6 +818,7 @@ export class GrReplyDialog extends LitElement {
 
   override disconnectedCallback() {
     this.storeTask?.flush();
+    this.reviewerWeightRefreshTask?.cancel();
     super.disconnectedCallback();
   }
 
@@ -943,6 +952,13 @@ export class GrReplyDialog extends LitElement {
                       <span class="suggestedReviewerReason"
                         >— ${s.reason}</span
                       >
+                      ${when(
+                        s.externalActivityBoosted === true,
+                        () =>
+                          html`<span class="suggestedReviewerExternalBadge"
+                            >external activity matched</span
+                          >`
+                      )}
                     </li>`
                   )}
                 </ul>`
@@ -959,10 +975,20 @@ export class GrReplyDialog extends LitElement {
 
   private handleRecentHistoryWeightInput(e: Event) {
     this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
+    this.scheduleSuggestedReviewerRefresh();
   }
 
   private handleContributionsWeightInput(e: Event) {
     this.reviewerContributionsWeight = this.parseWeightInput(e);
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private scheduleSuggestedReviewerRefresh() {
+    this.reviewerWeightRefreshTask = debounce(
+      this.reviewerWeightRefreshTask,
+      () => this.loadSuggestedReviewersInline(),
+      300
+    );
   }
 
   private parseWeightInput(e: Event) {
@@ -1059,7 +1085,12 @@ export class GrReplyDialog extends LitElement {
     const suggestions =
       await this.restApiService.getChangeSuggestedReviewers(
         this.change._number,
-        ''
+        '',
+        undefined,
+        {
+          recent: this.reviewerRecentHistoryWeight,
+          contrib: this.reviewerContributionsWeight,
+        }
       );
     if (suggestions && suggestions.length > 0) {
       this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
@@ -1071,26 +1102,20 @@ export class GrReplyDialog extends LitElement {
             displayName:
               account.name ?? account.email ?? `User ${account._account_id}`,
             reason: 'suggested reviewer',
+            externalActivityBoosted:
+              'externalActivityBoosted' in s
+                ? s.externalActivityBoosted === true
+                : false,
           },
         ];
       });
       return;
     }
 
-    const admins = await this.restApiService.getGroupMembers(
-      'Administrators' as any
-    );
-    if (!admins || admins.length === 0) {
-      this.suggestedReviewersInline = [];
-      return;
-    }
-
-    this.suggestedReviewersInline = admins.slice(0, 3).map(account => ({
-      account,
-      displayName:
-        account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'suggested reviewer',
-    }));
+    // Do not silently fall back to hardcoded Administrators suggestions.
+    // Showing an empty list makes it clear whether algorithmic suggestions are
+    // actually being produced, which is important when tuning weights.
+    this.suggestedReviewersInline = [];
   }
 
   private renderLabels() {

@@ -111,6 +111,20 @@ export interface GetDiffRobotCommentsOutput {
   comments: RobotCommentInfo[];
 }
 
+/**
+ * Per-request multipliers forwarded to the algorithmic reviewer scorer on the
+ * server. Each weight is a non-negative number; `undefined` leaves the
+ * server-configured default untouched, `1` is a no-op, `0` disables the signal
+ * group and larger values amplify it.
+ *
+ *  - `recent`: scales "recent activity" signals (file familiarity + engagement)
+ *  - `contrib`: scales "contributions" signals (project ownership + cross-repo)
+ */
+export interface ReviewerSuggestionWeights {
+  recent?: number;
+  contrib?: number;
+}
+
 export interface RestApiService extends Finalizable {
   getConfig(noCache?: boolean): Promise<ServerInfo | undefined>;
   getLoggedIn(): Promise<boolean>;
@@ -165,7 +179,8 @@ export interface RestApiService extends Finalizable {
   getChangeSuggestedReviewers(
     changeNum: NumericChangeId,
     input: string,
-    errFn?: ErrorCallback
+    errFn?: ErrorCallback,
+    weights?: ReviewerSuggestionWeights
   ): Promise<SuggestedReviewerInfo[] | undefined>;
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,

@@ -95,7 +95,6 @@ import {changeModelToken} from '../../../models/change/change-model';
 import {relatedChangesModelToken} from '../../../models/change/related-changes-model';
 import {truncatePath} from '../../../utils/path-list-util';
 import {accountEmail, getDisplayName} from '../../../utils/display-name-util';
-import {GroupName} from '../../../api/rest-api';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
 
@@ -592,19 +591,9 @@ export class GrChangeMetadata extends LitElement {
       return;
     }
 
-    // Fallback: retrieve members of the Administrators group and use them as
-    // placeholder suggestions until the new algorithmic recommender is wired
-    // through the backend.
-    const adminMembers = await this.restApiService.getGroupMembers(
-      'Administrators' as GroupName
-    );
-    if (!adminMembers || adminMembers.length === 0) {
-      this.suggestedReviewers = [];
-      return;
-    }
-    this.suggestedReviewers = adminMembers
-      .slice(0, 3)
-      .map(a => a.name ?? a.email ?? `User ${a._account_id}`);
+    // Do not silently fall back to hardcoded Administrators suggestions.
+    // Showing empty state exposes whether backend recommendations are wired.
+    this.suggestedReviewers = [];
   }
 
   private handleSuggestedReviewerClick() {

@@ -1242,6 +1242,11 @@ export interface SuggestedReviewerAccountInfo {
    * The total number of accounts in the suggestion - always 1
    */
   count: 1;
+  /**
+   * True when external activity (for example imported GitHub history) contributed to this
+   * account's suggestion score.
+   */
+  externalActivityBoosted?: boolean;
 }
 
 /**

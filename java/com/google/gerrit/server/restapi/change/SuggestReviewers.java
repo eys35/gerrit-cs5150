@@ -17,6 +17,7 @@ package com.google.gerrit.server.restapi.change;
 import static com.google.gerrit.server.config.GerritConfigListenerHelper.acceptIfChanged;
 
 import com.google.common.flogger.FluentLogger;
+import com.google.gerrit.common.Nullable;
 import com.google.gerrit.extensions.common.AccountVisibility;
 import com.google.gerrit.server.change.ReviewerModifier;
 import com.google.gerrit.server.config.ConfigKey;
@@ -42,6 +43,8 @@ public class SuggestReviewers {
   protected String query;
   protected final int maxSuggestedReviewers;
   protected boolean skipServiceUsers;
+  protected Double wRecent;
+  protected Double wContrib;
 
   @Option(
       name = "--limit",
@@ -61,8 +64,52 @@ public class SuggestReviewers {
     this.query = q;
   }
 
+  @Option(
+      name = "--w-recent",
+      metaVar = "WEIGHT",
+      usage =
+          "per-request multiplier (>= 0) for the 'recent activity' signals in the reviewer scorer"
+              + " (scales file familiarity and engagement weights)")
+  public void setWRecent(Double w) {
+    this.wRecent = clampWeight(w);
+  }
+
+  @Option(
+      name = "--w-contrib",
+      metaVar = "WEIGHT",
+      usage =
+          "per-request multiplier (>= 0) for the 'contributions' signals in the reviewer scorer"
+              + " (scales ownership and cross-repo weights)")
+  public void setWContrib(Double w) {
+    this.wContrib = clampWeight(w);
+  }
+
   public String getQuery() {
     return query;
+  }
+
+  @Nullable
+  public Double getWRecent() {
+    return wRecent;
+  }
+
+  @Nullable
+  public Double getWContrib() {
+    return wContrib;
+  }
+
+  @Nullable
+  private static Double clampWeight(@Nullable Double w) {
+    if (w == null) {
+      return null;
+    }
+    if (w.isNaN() || w.isInfinite()) {
+      return null;
+    }
+    if (w < 0) {
+      return 0d;
+    }
+    return w;
   }
 
   public boolean getSuggestAccounts() {
