@@ -1086,10 +1086,11 @@ export class GrReplyDialog extends LitElement {
         this.change._number,
         '',
         undefined,
-        {
-          recent: this.reviewerRecentHistoryWeight,
-          contrib: this.reviewerContributionsWeight,
-        }
+        this.reviewerContributionsWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerContributionsWeight,
+        1
       );
 
     const serverSuggestions =
@@ -1097,10 +1098,11 @@ export class GrReplyDialog extends LitElement {
         this.change._number,
         '',
         undefined,
-        {
-          recent: this.reviewerRecentHistoryWeight,
-          contrib: this.reviewerContributionsWeight,
-        }
+        this.reviewerContributionsWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerContributionsWeight,
+        1
       );
 
     const merged = new Map<number, (typeof this.suggestedReviewersInline)[number]>();

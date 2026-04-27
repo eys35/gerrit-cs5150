@@ -127,7 +127,19 @@ public class ReviewerRecommender {
       @Nullable Double wAvailability)
       throws IOException, NoSuchProjectException {
     return suggestReviewers(
-        reviewerState, changeNotes, query, projectState, candidateList, null, null, false);
+        reviewerState,
+        changeNotes,
+        query,
+        projectState,
+        candidateList,
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability,
+        null,
+        null,
+        false);
   }
 
   /**
@@ -154,6 +166,11 @@ public class ReviewerRecommender {
         query,
         projectState,
         candidateList,
+        null,
+        null,
+        null,
+        null,
+        null,
         wRecent,
         wContrib,
         false);
@@ -165,6 +182,11 @@ public class ReviewerRecommender {
       String query,
       ProjectState projectState,
       ImmutableList<Account.Id> candidateList,
+      @Nullable Double wOwnership,
+      @Nullable Double wFileFamiliarity,
+      @Nullable Double wEngagement,
+      @Nullable Double wCrossRepo,
+      @Nullable Double wAvailability,
       @Nullable Double wRecent,
       @Nullable Double wContrib,
       boolean externalOnly)

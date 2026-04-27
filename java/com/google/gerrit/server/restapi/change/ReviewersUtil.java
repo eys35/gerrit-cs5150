@@ -354,6 +354,11 @@ public class ReviewersUtil {
           suggestReviewers.getQuery(),
           projectState,
           candidateList,
+          suggestReviewers.wOwnership,
+          suggestReviewers.wFileFamiliarity,
+          suggestReviewers.wEngagement,
+          suggestReviewers.wCrossRepo,
+          suggestReviewers.wAvailability,
           suggestReviewers.getWRecent(),
           suggestReviewers.getWContrib(),
           suggestReviewers.isExternalOnly());

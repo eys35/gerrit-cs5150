@@ -115,7 +115,6 @@ import {
   GetDiffCommentsOutput,
   GetDiffRobotCommentsOutput,
   RestApiService,
-  ReviewerSuggestionWeights,
 } from './gr-rest-api';
 import {
   CommentSide,
@@ -1522,14 +1521,22 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
       errFn,
-      weights
+      wOwnership,
+      wFileFamiliarity,
+      wEngagement,
+      wCrossRepo,
+      wAvailability
     );
   }
 
@@ -1537,14 +1544,22 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ) {
     return this._getChangeSuggestedGroup(
       ReviewerState.REVIEWER,
       changeNum,
       inputVal,
       errFn,
-      weights,
+      wOwnership,
+      wFileFamiliarity,
+      wEngagement,
+      wCrossRepo,
+      wAvailability,
       'suggest_git_reviewers'
     );
   }
@@ -1567,7 +1582,11 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     changeNum: NumericChangeId,
     inputVal: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights,
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number,
     endpoint: string = 'suggest_reviewers'
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
@@ -1579,11 +1598,20 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     if (inputVal) {
       params.q = inputVal;
     }
-    if (weights?.recent !== undefined && Number.isFinite(weights.recent)) {
-      params['w-recent'] = weights.recent;
+    if (wOwnership !== undefined) {
+      params['w-ownership'] = wOwnership;
     }
-    if (weights?.contrib !== undefined && Number.isFinite(weights.contrib)) {
-      params['w-contrib'] = weights.contrib;
+    if (wFileFamiliarity !== undefined) {
+      params['w-file-familiarity'] = wFileFamiliarity;
+    }
+    if (wEngagement !== undefined) {
+      params['w-engagement'] = wEngagement;
+    }
+    if (wCrossRepo !== undefined) {
+      params['w-cross-repo'] = wCrossRepo;
+    }
+    if (wAvailability !== undefined) {
+      params['w-availability'] = wAvailability;
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({

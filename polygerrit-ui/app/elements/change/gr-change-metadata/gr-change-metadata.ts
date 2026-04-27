@@ -660,19 +660,26 @@ export class GrChangeMetadata extends LitElement {
     const changeNum = this.change._number;
     if (!changeNum) return;
     if (this.weightSum !== 100) return;
-    const weights = this.toSuggestionWeights();
     const [gitSuggestions, serverSuggestions] = await Promise.all([
       this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
         throwingErrorCallback,
-        weights
+        this.wOwnership / 100,
+        this.wFileFamiliarity / 100,
+        this.wEngagement / 100,
+        this.wCrossRepo / 100,
+        this.wAvailability / 100
       ),
       this.restApiService.getChangeSuggestedReviewers(
         changeNum,
         '',
         throwingErrorCallback,
-        weights
+        this.wOwnership / 100,
+        this.wFileFamiliarity / 100,
+        this.wEngagement / 100,
+        this.wCrossRepo / 100,
+        this.wAvailability / 100
       ),
     ]);
 
@@ -715,15 +722,6 @@ export class GrChangeMetadata extends LitElement {
       false
     );
     this.suggestedReviewers = Array.from(merged.values());
-  }
-
-  private toSuggestionWeights() {
-    const recentSignals = this.wFileFamiliarity + this.wEngagement + this.wAvailability;
-    const contributionSignals = this.wOwnership + this.wCrossRepo;
-    return {
-      recent: recentSignals / 55,
-      contrib: contributionSignals / 45,
-    };
   }
 
   private get weightSum() {

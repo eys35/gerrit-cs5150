@@ -180,13 +180,21 @@ export interface RestApiService extends Finalizable {
     changeNum: NumericChangeId,
     input: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ): Promise<SuggestedReviewerInfo[] | undefined>;
   getChangeSuggestedGitReviewers(
     changeNum: NumericChangeId,
     input: string,
     errFn?: ErrorCallback,
-    weights?: ReviewerSuggestionWeights
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
   ): Promise<SuggestedReviewerInfo[] | undefined>;
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,
