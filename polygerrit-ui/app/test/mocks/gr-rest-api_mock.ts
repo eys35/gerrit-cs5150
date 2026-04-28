@@ -254,7 +254,16 @@ export const grRestApiMock: RestApiService = {
   getChangeSuggestedCCs(): Promise<SuggestedReviewerInfo[] | undefined> {
     return Promise.resolve([]);
   },
-  getChangeSuggestedReviewers(): Promise<SuggestedReviewerInfo[] | undefined> {
+  getChangeSuggestedReviewers(
+    _changeNum?: NumericChangeId,
+    _input?: string,
+    _errFn?: ErrorCallback,
+    _wOwnership?: number,
+    _wFileFamiliarity?: number,
+    _wEngagement?: number,
+    _wCrossRepo?: number,
+    _wAvailability?: number
+  ): Promise<SuggestedReviewerInfo[] | undefined> {
     return Promise.resolve([]);
   },
   getChanges() {

@@ -74,28 +74,28 @@ import {
   AutocompleteQuery,
   AutocompleteSuggestion,
 } from '../../shared/gr-autocomplete/gr-autocomplete';
-import {getRevertCreatedChangeIds} from '../../../utils/message-util';
-import {Interaction} from '../../../constants/reporting';
-import {getApprovalInfo, getCodeReviewLabel} from '../../../utils/label-util';
-import {LitElement, css, html, nothing, PropertyValues} from 'lit';
-import {customElement, property, query, state} from 'lit/decorators.js';
-import {sharedStyles} from '../../../styles/shared-styles';
-import {fontStyles} from '../../../styles/gr-font-styles';
-import {changeMetadataStyles} from '../../../styles/gr-change-metadata-shared-styles';
-import {when} from 'lit/directives/when.js';
-import {createSearchUrl} from '../../../models/views/search';
-import {createChangeUrl} from '../../../models/views/change';
-import {getChangeWeblinks} from '../../../utils/weblink-util';
-import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
-import {subscribe} from '../../lit/subscription-controller';
-import {userModelToken} from '../../../models/user/user-model';
-import {resolve} from '../../../models/dependency';
-import {configModelToken} from '../../../models/config/config-model';
-import {changeModelToken} from '../../../models/change/change-model';
-import {relatedChangesModelToken} from '../../../models/change/related-changes-model';
-import {truncatePath} from '../../../utils/path-list-util';
-import {accountEmail, getDisplayName} from '../../../utils/display-name-util';
-import {GroupName} from '../../../api/rest-api';
+import { getRevertCreatedChangeIds } from '../../../utils/message-util';
+import { Interaction } from '../../../constants/reporting';
+import { getApprovalInfo, getCodeReviewLabel } from '../../../utils/label-util';
+import { LitElement, css, html, nothing, PropertyValues } from 'lit';
+import { customElement, property, query, state } from 'lit/decorators.js';
+import { sharedStyles } from '../../../styles/shared-styles';
+import { fontStyles } from '../../../styles/gr-font-styles';
+import { changeMetadataStyles } from '../../../styles/gr-change-metadata-shared-styles';
+import { when } from 'lit/directives/when.js';
+import { createSearchUrl } from '../../../models/views/search';
+import { createChangeUrl } from '../../../models/views/change';
+import { getChangeWeblinks } from '../../../utils/weblink-util';
+import { throwingErrorCallback } from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
+import { subscribe } from '../../lit/subscription-controller';
+import { userModelToken } from '../../../models/user/user-model';
+import { resolve } from '../../../models/dependency';
+import { configModelToken } from '../../../models/config/config-model';
+import { changeModelToken } from '../../../models/change/change-model';
+import { relatedChangesModelToken } from '../../../models/change/related-changes-model';
+import { truncatePath } from '../../../utils/path-list-util';
+import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
+import { GroupName } from '../../../api/rest-api';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
 
@@ -187,6 +187,16 @@ export class GrChangeMetadata extends LitElement {
   );
 
   @state() private suggestedReviewers: string[] = [];
+
+  @state() private wOwnership = 35;
+
+  @state() private wFileFamiliarity = 30;
+
+  @state() private wEngagement = 20;
+
+  @state() private wCrossRepo = 10;
+
+  @state() private wAvailability = 5;
 
   constructor() {
     super();
@@ -542,20 +552,13 @@ export class GrChangeMetadata extends LitElement {
   private renderSuggestedReviewers() {
     const suggestions = this.suggestedReviewers;
     return html`<section class="suggestedReviewers">
-      <span class="title">
-        Suggested reviewers
-        <br/><label><input type="checkbox" checked /> Use</label>
-      </span>
+      <span class="title">Suggested reviewers</span>
       <span class="value">
-        <div class="reviewerWeights">
-          <label>Recent history weight: <input type="number" value="1" min="0" max="10"/></label>
-          <label>Contributions weight: <input type="number" value="1" min="0" max="10"/></label>
-        </div>
         ${suggestions.length === 0
-          ? html`<span class="noSuggestedReviewers"
+        ? html`<span class="noSuggestedReviewers"
               >no suggested reviewers</span
             >`
-          : html`<ul class="suggestedReviewersList">
+        : html`<ul class="suggestedReviewersList">
               ${suggestions.map(
           suggestion => html`<li class="suggestedReviewersItem">
                   <gr-button
@@ -571,6 +574,67 @@ export class GrChangeMetadata extends LitElement {
                 </li>`
         )}
             </ul>`}
+        ${when(
+          this.showAllSections,
+          () => html`<div class="reviewerWeights">
+            <div class="reviewerWeightPresets">
+              <span>Presets:</span>
+              <gr-button link @click=${this.handlePresetRecent}>Recent</gr-button>
+              <gr-button link @click=${this.handlePresetOwnership}>Ownership</gr-button>
+              <gr-button link @click=${this.handlePresetBalanced}>Balanced</gr-button>
+            </div>
+            <label class="reviewerWeightRow">
+              <span>Ownership</span>
+              <input
+                type="range" min="0" max="100"
+                .value=${String(this.wOwnership)}
+                @input=${this.handleOwnershipWeightInput}
+              />
+              <span>${this.wOwnership}</span>
+            </label>
+            <label class="reviewerWeightRow">
+              <span>File familiarity</span>
+              <input
+                type="range" min="0" max="100"
+                .value=${String(this.wFileFamiliarity)}
+                @input=${this.handleFileFamiliarityWeightInput}
+              />
+              <span>${this.wFileFamiliarity}</span>
+            </label>
+            <label class="reviewerWeightRow">
+              <span>Engagement</span>
+              <input
+                type="range" min="0" max="100"
+                .value=${String(this.wEngagement)}
+                @input=${this.handleEngagementWeightInput}
+              />
+              <span>${this.wEngagement}</span>
+            </label>
+            <label class="reviewerWeightRow">
+              <span>Cross-repo</span>
+              <input
+                type="range" min="0" max="100"
+                .value=${String(this.wCrossRepo)}
+                @input=${this.handleCrossRepoWeightInput}
+              />
+              <span>${this.wCrossRepo}</span>
+            </label>
+            <label class="reviewerWeightRow">
+              <span>Availability</span>
+              <input
+                type="range" min="0" max="100"
+                .value=${String(this.wAvailability)}
+                @input=${this.handleAvailabilityWeightInput}
+              />
+              <span>${this.wAvailability}</span>
+            </label>
+            ${this.weightSum !== 100
+              ? html`<span class="reviewerWeightError">
+                  Weights must add to 100. Current sum: ${this.weightSum}
+                </span>`
+              : nothing}
+          </div>`
+        )}
       </span>
     </section>`;
   }
@@ -579,11 +643,17 @@ export class GrChangeMetadata extends LitElement {
     if (!this.change) return;
     const changeNum = this.change._number;
     if (!changeNum) return;
+    if (this.weightSum !== 100) return;
     const suggestions =
       await this.restApiService.getChangeSuggestedReviewers(
         changeNum,
         '',
-        throwingErrorCallback
+        undefined,
+        this.wOwnership / 100,
+        this.wFileFamiliarity / 100,
+        this.wEngagement / 100,
+        this.wCrossRepo / 100,
+        this.wAvailability / 100
       );
     if (suggestions && suggestions.length > 0) {
       this.suggestedReviewers = suggestions
@@ -605,6 +675,69 @@ export class GrChangeMetadata extends LitElement {
     this.suggestedReviewers = adminMembers
       .slice(0, 3)
       .map(a => a.name ?? a.email ?? `User ${a._account_id}`);
+  }
+
+  private get weightSum() {
+    return this.wOwnership + this.wFileFamiliarity + this.wEngagement + this.wCrossRepo + this.wAvailability;
+  }
+
+  private handleOwnershipWeightInput(e: Event) {
+    this.wOwnership = this.parseSliderInput(e);
+    if (this.weightSum === 100) this.loadSuggestedReviewers();
+  }
+
+  private handleFileFamiliarityWeightInput(e: Event) {
+    this.wFileFamiliarity = this.parseSliderInput(e);
+    if (this.weightSum === 100) this.loadSuggestedReviewers();
+  }
+
+  private handleEngagementWeightInput(e: Event) {
+    this.wEngagement = this.parseSliderInput(e);
+    if (this.weightSum === 100) this.loadSuggestedReviewers();
+  }
+
+  private handleCrossRepoWeightInput(e: Event) {
+    this.wCrossRepo = this.parseSliderInput(e);
+    if (this.weightSum === 100) this.loadSuggestedReviewers();
+  }
+
+  private handleAvailabilityWeightInput(e: Event) {
+    this.wAvailability = this.parseSliderInput(e);
+    if (this.weightSum === 100) this.loadSuggestedReviewers();
+  }
+
+  private handlePresetRecent() {
+    this.wOwnership = 10;
+    this.wFileFamiliarity = 10;
+    this.wEngagement = 60;
+    this.wCrossRepo = 10;
+    this.wAvailability = 10;
+    this.loadSuggestedReviewers();
+  }
+
+  private handlePresetOwnership() {
+    this.wOwnership = 60;
+    this.wFileFamiliarity = 20;
+    this.wEngagement = 10;
+    this.wCrossRepo = 5;
+    this.wAvailability = 5;
+    this.loadSuggestedReviewers();
+  }
+
+  private handlePresetBalanced() {
+    this.wOwnership = 35;
+    this.wFileFamiliarity = 30;
+    this.wEngagement = 20;
+    this.wCrossRepo = 10;
+    this.wAvailability = 5;
+    this.loadSuggestedReviewers();
+  }
+
+  private parseSliderInput(e: Event) {
+    if (!(e.target instanceof HTMLInputElement)) return 0;
+    const parsed = Number(e.target.value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.min(100, Math.max(0, Math.trunc(parsed)));
   }
 
   private handleSuggestedReviewerClick() {

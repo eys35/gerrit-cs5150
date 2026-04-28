@@ -115,7 +115,12 @@ public class ReviewerRecommender {
       @Nullable ChangeNotes changeNotes,
       String query,
       ProjectState projectState,
-      ImmutableList<Account.Id> candidateList)
+      ImmutableList<Account.Id> candidateList,
+      @Nullable Double wOwnership,
+      @Nullable Double wFileFamiliarity,
+      @Nullable Double wEngagement,
+      @Nullable Double wCrossRepo,
+      @Nullable Double wAvailability)
       throws IOException, NoSuchProjectException {
     logger.atFine().log("query: %s, candidates: %s", query, candidateList);
 
@@ -189,6 +194,29 @@ public class ReviewerRecommender {
     double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
     double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05);
+    if (wOwnership != null) {
+      w1 = wOwnership;
+    }
+    if (wFileFamiliarity != null) {
+      w2 = wFileFamiliarity;
+    }
+    if (wEngagement != null) {
+      w3 = wEngagement;
+    }
+    if (wCrossRepo != null) {
+      w4 = wCrossRepo;
+    }
+    if (wAvailability != null) {
+      w5 = wAvailability;
+    }
+    double total = w1 + w2 + w3 + w4 + w5;
+    if (total > 0) {
+      w1 /= total;
+      w2 /= total;
+      w3 /= total;
+      w4 /= total;
+      w5 /= total;
+    }
     int diversityCap = config.getInt("algorithmicReviewer", "diversityCap", 2);
     logger.atFine().log(
         "algorithmicReviewer weights — w1=%s w2=%s w3=%s w4=%s w5=%s diversityCap=%s",
