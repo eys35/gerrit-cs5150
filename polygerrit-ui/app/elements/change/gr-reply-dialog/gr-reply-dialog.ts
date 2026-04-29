@@ -94,6 +94,7 @@ import {
 import { ErrorCallback } from '../../../api/rest';
 import { DelayedTask } from '../../../utils/async-util';
 import { Interaction, Timing } from '../../../constants/reporting';
+import { debounce } from '../../../utils/async-util';
 import {
   getMentionedReason,
   getReplyByReason,
@@ -305,10 +306,19 @@ export class GrReplyDialog extends LitElement {
     account: AccountInfo;
     displayName: string;
     reason: string;
+    externalActivityBoosted?: boolean;
   }[] = [];
 
   @state()
   useSuggestedReviewers = true;
+
+  @state()
+  reviewerRecentHistoryWeight = 1;
+
+  @state()
+  reviewerContributionsWeight = 1;
+
+  private reviewerWeightRefreshTask?: DelayedTask;
 
   @state()
   savingComments = false;
@@ -629,6 +639,11 @@ export class GrReplyDialog extends LitElement {
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
         }
+        .suggestedReviewerExternalBadge {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--info-foreground);
+        }
       `,
     ];
   }
@@ -804,6 +819,7 @@ export class GrReplyDialog extends LitElement {
 
   override disconnectedCallback() {
     this.storeTask?.flush();
+    this.reviewerWeightRefreshTask?.cancel();
     super.disconnectedCallback();
   }
 
@@ -892,6 +908,30 @@ export class GrReplyDialog extends LitElement {
             Use suggested reviewers
           </label>
         </div>
+        <div class="reviewerWeights">
+          <label>
+            Recent history weight
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="1"
+              .value=${String(this.reviewerRecentHistoryWeight)}
+              @input=${this.handleRecentHistoryWeightInput}
+            />
+          </label>
+          <label>
+            Contributions weight
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="1"
+              .value=${String(this.reviewerContributionsWeight)}
+              @input=${this.handleContributionsWeightInput}
+            />
+          </label>
+        </div>
         ${when(
       this.useSuggestedReviewers,
       () =>
@@ -913,6 +953,13 @@ export class GrReplyDialog extends LitElement {
                       <span class="suggestedReviewerReason"
                         >— ${s.reason}</span
                       >
+                      ${when(
+                        s.externalActivityBoosted === true,
+                        () =>
+                          html`<span class="suggestedReviewerExternalBadge"
+                            >external activity matched</span
+                          >`
+                      )}
                     </li>`
           )}
                 </ul>`
@@ -926,6 +973,31 @@ export class GrReplyDialog extends LitElement {
     this.useSuggestedReviewers = e.target.checked;
   }
 
+  private handleRecentHistoryWeightInput(e: Event) {
+    this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private handleContributionsWeightInput(e: Event) {
+    this.reviewerContributionsWeight = this.parseWeightInput(e);
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private scheduleSuggestedReviewerRefresh() {
+    this.reviewerWeightRefreshTask = debounce(
+      this.reviewerWeightRefreshTask,
+      () => this.loadSuggestedReviewersInline(),
+      300
+    );
+  }
+
+  private parseWeightInput(e: Event) {
+    if (!(e.target instanceof HTMLInputElement)) return 1;
+    const parsed = Number(e.target.value);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.min(10, Math.max(0, Math.trunc(parsed)));
+
+  }
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
     if (!this.reviewersList) return;
     this.reviewersList.addAccountItem({
@@ -1009,42 +1081,72 @@ export class GrReplyDialog extends LitElement {
       return;
     }
 
-    const suggestions =
-      await this.restApiService.getChangeSuggestedReviewers(
+    const [gitResult, serverResult] = await Promise.allSettled([
+      this.restApiService.getChangeSuggestedGitReviewers(
         this.change._number,
         '',
-        undefined
-      );
-    if (suggestions && suggestions.length > 0) {
-      this.suggestedReviewersInline = suggestions.slice(0, 3).flatMap(s => {
-        if (!('account' in s) || !s.account) return [];
-        const account = s.account;
-        return [
-          {
-            account,
-            displayName:
-              account.name ?? account.email ?? `User ${account._account_id}`,
-            reason: 'suggested reviewer',
-          },
-        ];
-      });
-      return;
-    }
+        undefined,
+        this.reviewerContributionsWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerContributionsWeight,
+        1
+      ),
+      this.restApiService.getChangeSuggestedReviewers(
+        this.change._number,
+        '',
+        undefined,
+        this.reviewerContributionsWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerRecentHistoryWeight,
+        this.reviewerContributionsWeight,
+        1
+      ),
+    ]);
 
-    const admins = await this.restApiService.getGroupMembers(
-      'Administrators' as any
+    const gitSuggestions =
+      gitResult.status === 'fulfilled' ? gitResult.value : undefined;
+    const serverSuggestions =
+      serverResult.status === 'fulfilled' ? serverResult.value : undefined;
+
+    const merged = new Map<number, (typeof this.suggestedReviewersInline)[number]>();
+    const addSuggestions = (
+      list: unknown[] | undefined,
+      baseReason: string,
+      external: boolean
+    ) => {
+      if (!list) return;
+      for (const s of list) {
+        if (!s || typeof s !== 'object' || !('account' in s) || !s.account) continue;
+        const account = s.account as AccountInfo;
+        const id = account._account_id;
+        if (id === undefined) continue;
+        if (merged.has(id)) continue;
+        merged.set(id, {
+          account,
+          displayName: account.name ?? account.email ?? `User ${id}`,
+          reason: baseReason,
+          externalActivityBoosted:
+            external ||
+            ('externalActivityBoosted' in s &&
+              (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
+        });
+        if (merged.size >= 3) return;
+      }
+    };
+
+    addSuggestions(
+      gitSuggestions as unknown[] | undefined,
+      'GitHub activity match (git-only endpoint)',
+      true
     );
-    if (!admins || admins.length === 0) {
-      this.suggestedReviewersInline = [];
-      return;
-    }
+    addSuggestions(
+      serverSuggestions as unknown[] | undefined,
+      'server suggestion (combined fallback)',
+      false
+    );
 
-    this.suggestedReviewersInline = admins.slice(0, 3).map(account => ({
-      account,
-      displayName:
-        account.name ?? account.email ?? `User ${account._account_id}`,
-      reason: 'suggested reviewer',
-    }));
+    this.suggestedReviewersInline = Array.from(merged.values());
   }
 
   private renderLabels() {

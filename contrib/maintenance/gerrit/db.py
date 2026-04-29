@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS changes (
     updated             TEXT,
     submitted           TEXT,
     insertions          INTEGER,
-    deletions           INTEGER
+    deletions           INTEGER,
+    source              TEXT    NOT NULL DEFAULT 'gerrit'
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS files (
     lines_inserted  INTEGER,
     lines_deleted   INTEGER,
     change_type     TEXT,
+    source          TEXT    NOT NULL DEFAULT 'gerrit',
     PRIMARY KEY (change_id, patchset_number, file_path)
 );
 
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS reviewers (
     account_name    TEXT,
     account_email   TEXT,
     state           TEXT    NOT NULL,
+    source          TEXT    NOT NULL DEFAULT 'gerrit',
     PRIMARY KEY (change_id, account_id)
 );
 
@@ -51,6 +54,7 @@ CREATE TABLE IF NOT EXISTS label_votes (
     label_name  TEXT    NOT NULL,
     value       INTEGER NOT NULL,
     date        TEXT,
+    source      TEXT    NOT NULL DEFAULT 'gerrit',
     PRIMARY KEY (change_id, account_id, label_name)
 );
 
@@ -107,6 +111,19 @@ class ReviewActivityStore:
     def _init_schema(self) -> None:
         assert self._conn is not None
         self._conn.executescript(_SCHEMA)
+        # Idempotent migration for stores created before the `source` column
+        # was added. SQLite's `ADD COLUMN` is not transactional with `IF NOT
+        # EXISTS`, so we probe each table first.
+        for table in ("changes", "files", "reviewers", "label_votes"):
+            cols = {
+                row[1]
+                for row in self._conn.execute(f"PRAGMA table_info({table})")
+            }
+            if "source" not in cols:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN source TEXT "
+                    f"NOT NULL DEFAULT 'gerrit'"
+                )
         self._conn.commit()
 
     def upsert_change(self, r: ChangeRecord) -> None:
@@ -115,8 +132,8 @@ class ReviewActivityStore:
             """INSERT OR REPLACE INTO changes
                (change_id, project, branch, owner_account_id, owner_name,
                 owner_email, status, created, updated, submitted,
-                insertions, deletions)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                insertions, deletions, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 r.change_id,
                 r.project,
@@ -130,6 +147,7 @@ class ReviewActivityStore:
                 r.submitted,
                 r.insertions,
                 r.deletions,
+                r.source,
             ),
         )
 
@@ -138,8 +156,8 @@ class ReviewActivityStore:
         self._conn.execute(
             """INSERT OR REPLACE INTO files
                (change_id, patchset_number, file_path,
-                lines_inserted, lines_deleted, change_type)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+                lines_inserted, lines_deleted, change_type, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 r.change_id,
                 r.patchset_number,
@@ -147,6 +165,7 @@ class ReviewActivityStore:
                 r.lines_inserted,
                 r.lines_deleted,
                 r.change_type,
+                r.source,
             ),
         )
 
@@ -154,18 +173,32 @@ class ReviewActivityStore:
         assert self._conn is not None
         self._conn.execute(
             """INSERT OR REPLACE INTO reviewers
-               (change_id, account_id, account_name, account_email, state)
-               VALUES (?, ?, ?, ?, ?)""",
-            (r.change_id, r.account_id, r.account_name, r.account_email, r.state),
+               (change_id, account_id, account_name, account_email, state, source)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                r.change_id,
+                r.account_id,
+                r.account_name,
+                r.account_email,
+                r.state,
+                r.source,
+            ),
         )
 
     def upsert_label_vote(self, r: LabelVoteRecord) -> None:
         assert self._conn is not None
         self._conn.execute(
             """INSERT OR REPLACE INTO label_votes
-               (change_id, account_id, label_name, value, date)
-               VALUES (?, ?, ?, ?, ?)""",
-            (r.change_id, r.account_id, r.label_name, r.value, r.date),
+               (change_id, account_id, label_name, value, date, source)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                r.change_id,
+                r.account_id,
+                r.label_name,
+                r.value,
+                r.date,
+                r.source,
+            ),
         )
 
     def upsert_commit(self, r: CommitRecord) -> None:
@@ -207,5 +240,20 @@ class ReviewActivityStore:
         assert self._conn is not None
         row = self._conn.execute(
             "SELECT MAX(updated) FROM changes WHERE project = ?", (project,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def latest_change_updated_for_source(
+        self, project: str, source: str
+    ) -> Optional[str]:
+        """Like :meth:`latest_change_updated`, scoped to a specific data source.
+
+        Lets the GitHub ingester run alongside the Gerrit one without one
+        clobbering the other's incremental high-water mark.
+        """
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT MAX(updated) FROM changes WHERE project = ? AND source = ?",
+            (project, source),
         ).fetchone()
         return row[0] if row else None

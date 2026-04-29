@@ -205,6 +205,8 @@ interface QuerySuggestedReviewersParams {
   'w-cross-repo'?: number;
   'w-availability'?: number;
   'reviewer-state': ReviewerState;
+  'w-recent'?: number;
+  'w-contrib'?: number;
 }
 
 interface GetDiffParams {
@@ -1538,6 +1540,30 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     );
   }
 
+  getChangeSuggestedGitReviewers(
+    changeNum: NumericChangeId,
+    inputVal: string,
+    errFn?: ErrorCallback,
+    wOwnership?: number,
+    wFileFamiliarity?: number,
+    wEngagement?: number,
+    wCrossRepo?: number,
+    wAvailability?: number
+  ) {
+    return this._getChangeSuggestedGroup(
+      ReviewerState.REVIEWER,
+      changeNum,
+      inputVal,
+      errFn,
+      wOwnership,
+      wFileFamiliarity,
+      wEngagement,
+      wCrossRepo,
+      wAvailability,
+      'suggest_git_reviewers'
+    );
+  }
+
   getChangeSuggestedCCs(
     changeNum: NumericChangeId,
     inputVal: string,
@@ -1560,7 +1586,8 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     wFileFamiliarity?: number,
     wEngagement?: number,
     wCrossRepo?: number,
-    wAvailability?: number
+    wAvailability?: number,
+    endpoint: string = 'suggest_reviewers'
   ): Promise<SuggestedReviewerInfo[] | undefined> {
     // More suggestions may obscure content underneath in the reply dialog,
     // see issue 10793.
@@ -1588,9 +1615,9 @@ export class GrRestApiServiceImpl implements RestApiService, Finalizable {
     }
     const url = await this._changeBaseURL(changeNum);
     return this._restApiHelper.fetchJSON({
-      url: `${url}/suggest_reviewers`,
+      url: `${url}/${endpoint}`,
       params,
-      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/suggest_reviewers`,
+      anonymizedUrl: `${ANONYMIZED_CHANGE_BASE_URL}/${endpoint}`,
       errFn,
     }) as Promise<SuggestedReviewerInfo[] | undefined>;
   }

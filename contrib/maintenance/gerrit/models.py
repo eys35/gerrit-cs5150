@@ -16,6 +16,7 @@ class ChangeRecord:
     submitted: Optional[str]
     insertions: Optional[int]
     deletions: Optional[int]
+    source: str = "gerrit"
 
 
 @dataclass
@@ -26,6 +27,7 @@ class FileRecord:
     lines_inserted: Optional[int]
     lines_deleted: Optional[int]
     change_type: Optional[str]
+    source: str = "gerrit"
 
 
 @dataclass
@@ -35,6 +37,7 @@ class ReviewerRecord:
     account_name: Optional[str]
     account_email: Optional[str]
     state: str  # REVIEWER or CC
+    source: str = "gerrit"
 
 
 @dataclass
@@ -44,6 +47,7 @@ class LabelVoteRecord:
     label_name: str
     value: int
     date: Optional[str]
+    source: str = "gerrit"
 
 
 @dataclass

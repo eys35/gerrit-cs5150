@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Maps Gerrit account ids (as strings) to GitHub login names. Used by the",
+    "GitHub ingester (`gerrit-maintenance projects ingest-github`) to attribute",
+    "PR/review activity to the same Account.Id the Gerrit scorer already uses.",
+    "Logins not present here are skipped on ingest with a warning. Copy this",
+    "file to `github_users.json` and edit the mappings; the example values are",
+    "real GitHub accounts so a fresh demo has actual review history to score."
+  ],
+  "mappings": {
+    "1001": "octocat",
+    "1002": "torvalds",
+    "1003": "gaearon",
+    "1004": "sindresorhus",
+    "1005": "addyosmani"
+  }
+}
