@@ -24,4 +24,10 @@ public class SuggestedReviewerInfo {
    * contributed positively to this account's ranking for the current suggestion request.
    */
   public Boolean externalActivityBoosted;
+
+  /**
+   * Optional human-readable explanation of which external signals matched (for example file
+   * familiarity, engagement, or cross-repo overlap).
+   */
+  public String externalActivityReason;
 }

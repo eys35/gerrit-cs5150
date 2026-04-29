@@ -1247,6 +1247,10 @@ export interface SuggestedReviewerAccountInfo {
    * account's suggestion score.
    */
   externalActivityBoosted?: boolean;
+  /**
+   * Optional explanation of which external activity signals matched.
+   */
+  externalActivityReason?: string;
 }
 
 /**

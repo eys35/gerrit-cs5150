@@ -19,6 +19,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.flogger.FluentLogger;
@@ -71,8 +72,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -254,7 +255,7 @@ public class ReviewersUtil {
     }
     logger.atFine().log("Filtered recommendations: %s", filteredRecommendations);
 
-    Set<Account.Id> externalBoostedAccounts =
+    ImmutableMap<Account.Id, String> externalBoostedAccounts =
         detectExternalBoostedAccounts(changeNotes, projectState, suggestReviewers, filteredRecommendations);
     List<SuggestedReviewerInfo> suggestedReviewers =
         suggestReviewers(
@@ -332,7 +333,7 @@ public class ReviewersUtil {
       VisibilityControl visibilityControl,
       boolean excludeGroups,
       List<Account.Id> filteredRecommendations,
-      Set<Account.Id> externalBoostedAccounts)
+      Map<Account.Id, String> externalBoostedAccounts)
       throws PermissionBackendException, IOException {
     List<SuggestedReviewerInfo> suggestedReviewers =
         loadAccounts(filteredRecommendations, externalBoostedAccounts);
@@ -408,7 +409,7 @@ public class ReviewersUtil {
   }
 
   private List<SuggestedReviewerInfo> loadAccounts(
-      List<Account.Id> accountIds, Set<Account.Id> externalBoostedAccounts)
+      List<Account.Id> accountIds, Map<Account.Id, String> externalBoostedAccounts)
       throws PermissionBackendException {
     List<SuggestedReviewerInfo> reviewers = loadAccounts(accountIds);
     if (externalBoostedAccounts.isEmpty()) {
@@ -418,33 +419,37 @@ public class ReviewersUtil {
       if (reviewer.account == null || reviewer.account._accountId == 0) {
         continue;
       }
-      if (externalBoostedAccounts.contains(Account.id(reviewer.account._accountId))) {
+      Account.Id reviewerId = Account.id(reviewer.account._accountId);
+      if (externalBoostedAccounts.containsKey(reviewerId)) {
         reviewer.externalActivityBoosted = true;
+        reviewer.externalActivityReason = externalBoostedAccounts.get(reviewerId);
       }
     }
     return reviewers;
   }
 
-  private Set<Account.Id> detectExternalBoostedAccounts(
+  private ImmutableMap<Account.Id, String> detectExternalBoostedAccounts(
       @Nullable ChangeNotes changeNotes,
       ProjectState projectState,
       SuggestReviewers suggestReviewers,
       List<Account.Id> candidateIds) {
     if (candidateIds.isEmpty()) {
-      return Collections.emptySet();
+      return ImmutableMap.of();
     }
-    Set<Account.Id> boosted = new HashSet<>();
+    ImmutableMap.Builder<Account.Id, String> boosted = ImmutableMap.builder();
     for (Account.Id id : candidateIds) {
-      if (reviewerRecommender.externalActivityHelpsCandidate(
-          id,
-          changeNotes,
-          projectState,
-          suggestReviewers.getWRecent(),
-          suggestReviewers.getWContrib())) {
-        boosted.add(id);
+      String reason =
+          reviewerRecommender.externalActivityReasonForCandidate(
+              id,
+              changeNotes,
+              projectState,
+              suggestReviewers.getWRecent(),
+              suggestReviewers.getWContrib());
+      if (!Strings.isNullOrEmpty(reason)) {
+        boosted.put(id, reason);
       }
     }
-    return boosted;
+    return boosted.buildOrThrow();
   }
 
   private List<SuggestedReviewerInfo> suggestAccountGroups(

@@ -61,6 +61,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -78,6 +79,7 @@ public class ReviewerRecommender {
 
   private static final int MAX_FILE_OVERLAP_PER_CHANGE = 32;
   private static final int MAX_OPEN_REVIEWS_FOR_LOAD = 20;
+  private static final double EXTENSION_OVERLAP_FACTOR = 0.25d;
 
   private final Config config;
   private final PluginMapContext<ReviewerSuggestion> reviewerSuggestionPluginMap;
@@ -112,6 +114,29 @@ public class ReviewerRecommender {
     this.groupMembers = groupMembers;
     this.changeDataFactory = changeDataFactory;
     this.externalActivityStore = externalActivityStore;
+  }
+
+  public List<Account.Id> suggestReviewers(
+      ReviewerState reviewerState,
+      @Nullable ChangeNotes changeNotes,
+      String query,
+      ProjectState projectState,
+      ImmutableList<Account.Id> candidateList)
+      throws IOException, NoSuchProjectException {
+    return suggestReviewers(
+        reviewerState,
+        changeNotes,
+        query,
+        projectState,
+        candidateList,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        false);
   }
 
   public List<Account.Id> suggestReviewers(
@@ -307,7 +332,7 @@ public class ReviewerRecommender {
 
     // Apply per-request weight overrides from the UI sliders. `wRecent` scales the recent-activity
     // signals (file familiarity and engagement); `wContrib` scales the contributions signals
-    // (project ownership and cross-repo overlap). w5 (load penalty) is intentionally untouched.
+    // (project ownership and cross-repo overlap).
     if (wRecent != null) {
       w2 *= wRecent;
       w3 *= wRecent;
@@ -330,9 +355,11 @@ public class ReviewerRecommender {
     // External-activity (e.g. GitHub) signals contribute to the same weighted buckets, so the UI
     // sliders' wRecent/wContrib multipliers already scale them. The store is empty (and these are
     // no-ops) unless `algorithmicReviewer.externalActivityFile` is configured and populated.
+    applyExternalOwnershipScores(candidateScores, targetProject, w1);
     applyExternalFileFamiliarityScores(candidateScores, targetFiles, w2);
     applyExternalEngagementScores(candidateScores, w3);
     applyExternalCrossRepoScores(candidateScores, targetFiles, targetProject, w4);
+    applyExternalAvailabilityPenalties(candidateScores, w5);
     applyLoadPenalties(candidateScores, projectHistory, w5);
     applyDiversityCap(candidateScores, targetFiles, projectHistory, diversityCap);
 
@@ -483,6 +510,30 @@ public class ReviewerRecommender {
   }
 
   /**
+   * External-source ownership proxy: candidates with activity in the target project get an
+   * ownership-style bonus.
+   */
+  private void applyExternalOwnershipScores(
+      Map<Account.Id, MutableDouble> candidateScores, Project.NameKey targetProject, double weight) {
+    if (externalActivityStore.isEmpty() || candidateScores.isEmpty()) {
+      return;
+    }
+    logger.atFine().log("applyExternalOwnershipScores: project=%s weight=%s", targetProject, weight);
+    String targetProjectName = targetProject.get();
+    for (Account.Id id : candidateScores.keySet()) {
+      int rowsInTargetProject = 0;
+      for (ExternalActivityStore.Row r : externalActivityStore.rowsFor(id)) {
+        if (targetProjectName.equals(r.project)) {
+          rowsInTargetProject += 1;
+        }
+      }
+      if (rowsInTargetProject > 0) {
+        candidateScores.get(id).add(weight * Math.log1p(rowsInTargetProject));
+      }
+    }
+  }
+
+  /**
    * File familiarity from overlap between this change's files and other changes in the same
    * project the candidate has reviewed.
    */
@@ -496,19 +547,26 @@ public class ReviewerRecommender {
       return;
     }
     logger.atFine().log("applyFileFamiliarityScores: weight=%s", weight);
+    Map<String, Integer> targetExtensionCounts = extensionCounts(targetFiles);
     for (Account.Id id : candidateScores.keySet()) {
       double add = 0;
       for (ChangeData cd : projectHistory) {
         if (!cd.reviewers().all().contains(id)) {
           continue;
         }
+        ImmutableSet<String> candidateFiles = ImmutableSet.copyOf(cd.currentFilePaths());
         int overlap =
             Math.min(
                 MAX_FILE_OVERLAP_PER_CHANGE,
-                ReviewerHistoryScoring.pathOverlapCount(
-                    targetFiles, ImmutableSet.copyOf(cd.currentFilePaths())));
+                ReviewerHistoryScoring.pathOverlapCount(targetFiles, candidateFiles));
         if (overlap > 0) {
           add += overlap;
+          continue;
+        }
+        // No exact path overlap: add a smaller language/file-type proxy via extension overlap.
+        int extensionOverlap = extensionOverlapCount(targetExtensionCounts, candidateFiles);
+        if (extensionOverlap > 0) {
+          add += EXTENSION_OVERLAP_FACTOR * extensionOverlap;
         }
       }
       if (add > 0) {
@@ -597,6 +655,7 @@ public class ReviewerRecommender {
       return;
     }
     logger.atFine().log("applyExternalFileFamiliarityScores: weight=%s", weight);
+    Map<String, Integer> targetExtensionCounts = extensionCounts(targetFiles);
     for (Account.Id id : candidateScores.keySet()) {
       ImmutableListMultimap<String, ExternalActivityStore.Row> byFile =
           externalActivityStore.rowsByFileFor(id);
@@ -609,10 +668,58 @@ public class ReviewerRecommender {
           overlap += Math.min(MAX_FILE_OVERLAP_PER_CHANGE, byFile.get(path).size());
         }
       }
+      if (overlap == 0) {
+        int extensionOverlap = extensionOverlapCount(targetExtensionCounts, byFile.keySet());
+        if (extensionOverlap > 0) {
+          candidateScores.get(id).add(weight * EXTENSION_OVERLAP_FACTOR * extensionOverlap);
+          continue;
+        }
+      }
       if (overlap > 0) {
         candidateScores.get(id).add(weight * overlap);
       }
     }
+  }
+
+  private static int extensionOverlapCount(
+      Map<String, Integer> targetExtensionCounts, Iterable<String> candidatePaths) {
+    if (targetExtensionCounts.isEmpty()) {
+      return 0;
+    }
+    Map<String, Integer> candidateExtensionCounts = extensionCounts(candidatePaths);
+    int overlap = 0;
+    for (Map.Entry<String, Integer> e : targetExtensionCounts.entrySet()) {
+      int candidateCount = candidateExtensionCounts.getOrDefault(e.getKey(), 0);
+      if (candidateCount > 0) {
+        overlap += Math.min(e.getValue(), candidateCount);
+      }
+    }
+    return overlap;
+  }
+
+  private static Map<String, Integer> extensionCounts(Iterable<String> paths) {
+    Map<String, Integer> counts = new HashMap<>();
+    for (String path : paths) {
+      String ext = fileExtension(path);
+      if (ext == null) {
+        continue;
+      }
+      counts.merge(ext, 1, Integer::sum);
+    }
+    return counts;
+  }
+
+  @Nullable
+  private static String fileExtension(@Nullable String path) {
+    if (path == null || path.isEmpty()) {
+      return null;
+    }
+    int slash = path.lastIndexOf('/');
+    int dot = path.lastIndexOf('.');
+    if (dot <= slash + 1 || dot == path.length() - 1) {
+      return null;
+    }
+    return path.substring(dot + 1).toLowerCase();
   }
 
   /** External-source counterpart of {@link #applyEngagementScores}, scored on non-zero votes. */
@@ -697,6 +804,25 @@ public class ReviewerRecommender {
   }
 
   /**
+   * External-source availability penalty proxy: candidates with heavy external review activity are
+   * penalized similarly to Gerrit's in-project open-review load.
+   */
+  private void applyExternalAvailabilityPenalties(
+      Map<Account.Id, MutableDouble> candidateScores, double weight) {
+    if (externalActivityStore.isEmpty() || candidateScores.isEmpty()) {
+      return;
+    }
+    logger.atFine().log("applyExternalAvailabilityPenalties: weight=%s", weight);
+    for (Account.Id id : candidateScores.keySet()) {
+      int activityLoad =
+          Math.min(MAX_OPEN_REVIEWS_FOR_LOAD, externalActivityStore.rowsFor(id).size());
+      if (activityLoad > 0) {
+        candidateScores.get(id).add(-weight * Math.log1p(activityLoad));
+      }
+    }
+  }
+
+  /**
    * Keep at most {@code cap} reviewers per top-level path cluster derived from shared files between
    * the target change and project history (fallback cluster {@code _other}).
    */
@@ -763,12 +889,44 @@ public class ReviewerRecommender {
       ProjectState projectState,
       @Nullable Double wRecent,
       @Nullable Double wContrib) {
-    if (externalActivityStore.isEmpty()) {
-      return false;
+    return !externalActivityReasonsForCandidate(
+            candidate, changeNotes, projectState, wRecent, wContrib)
+        .isEmpty();
+  }
+
+  @Nullable
+  String externalActivityReasonForCandidate(
+      Account.Id candidate,
+      @Nullable ChangeNotes changeNotes,
+      ProjectState projectState,
+      @Nullable Double wRecent,
+      @Nullable Double wContrib) {
+    Set<String> reasons =
+        externalActivityReasonsForCandidate(
+            candidate, changeNotes, projectState, wRecent, wContrib);
+    if (reasons.isEmpty()) {
+      return null;
     }
+    return String.join(", ", reasons);
+  }
+
+  private Set<String> externalActivityReasonsForCandidate(
+      Account.Id candidate,
+      @Nullable ChangeNotes changeNotes,
+      ProjectState projectState,
+      @Nullable Double wRecent,
+      @Nullable Double wContrib) {
+    Set<String> reasons = new LinkedHashSet<>();
+    if (externalActivityStore.isEmpty()) {
+      return reasons;
+    }
+    double w1 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w1"), 0.35);
     double w2 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w2"), 0.30);
     double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
+    if (wContrib != null) {
+      w1 *= wContrib;
+    }
     if (wRecent != null) {
       w2 *= wRecent;
       w3 *= wRecent;
@@ -788,9 +946,21 @@ public class ReviewerRecommender {
         externalActivityStore.rowsByFileFor(candidate);
     ImmutableList<ExternalActivityStore.Row> rows = externalActivityStore.rowsFor(candidate);
 
-    boolean fileFamiliarity =
-        w2 > 0 && !files.isEmpty() && files.stream().anyMatch(byFile::containsKey);
-    boolean engagement = w3 > 0 && rows.stream().anyMatch(r -> r.vote != 0);
+    Map<String, Double> matchedReasonsByWeight = new LinkedHashMap<>();
+    if (w1 > 0
+        && rows.stream().anyMatch(r -> r.project != null && r.project.equals(targetProjectName))) {
+      matchedReasonsByWeight.put("project ownership context", w1);
+    }
+    if (w2 > 0 && !files.isEmpty() && files.stream().anyMatch(byFile::containsKey)) {
+      matchedReasonsByWeight.put("exact file-path overlap", w2);
+    } else if (w2 > 0
+        && !files.isEmpty()
+        && extensionOverlapCount(extensionCounts(files), byFile.keySet()) > 0) {
+      matchedReasonsByWeight.put("similar file type/extension overlap", w2);
+    }
+    if (w3 > 0 && rows.stream().anyMatch(r -> r.vote != 0)) {
+      matchedReasonsByWeight.put("strong review engagement", w3);
+    }
     boolean crossRepo =
         w4 > 0
             && !files.isEmpty()
@@ -800,7 +970,19 @@ public class ReviewerRecommender {
                         r.project != null
                             && !r.project.equals(targetProjectName)
                             && files.contains(r.filePath));
-    return fileFamiliarity || engagement || crossRepo;
+    if (crossRepo) {
+      matchedReasonsByWeight.put("cross-repo overlap", w4);
+    }
+    if (matchedReasonsByWeight.isEmpty()) {
+      return reasons;
+    }
+    matchedReasonsByWeight.entrySet().stream()
+        .sorted(
+            Comparator.<Map.Entry<String, Double>>comparingDouble(Map.Entry::getValue)
+                .reversed())
+        .map(Map.Entry::getKey)
+        .forEach(reasons::add);
+    return reasons;
   }
 
   private static double parseConfigDouble(String value, double defaultValue) {

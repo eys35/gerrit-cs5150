@@ -957,7 +957,7 @@ export class GrReplyDialog extends LitElement {
                         s.externalActivityBoosted === true,
                         () =>
                           html`<span class="suggestedReviewerExternalBadge"
-                            >external activity matched</span
+                            >GitHub signal</span
                           >`
                       )}
                     </li>`
@@ -1125,7 +1125,22 @@ export class GrReplyDialog extends LitElement {
         merged.set(id, {
           account,
           displayName: account.name ?? account.email ?? `User ${id}`,
-          reason: baseReason,
+          reason: (() => {
+            const reason =
+              ('externalActivityReason' in s &&
+              typeof (s as {externalActivityReason?: unknown})
+                .externalActivityReason === 'string'
+                ? (s as {externalActivityReason?: string}).externalActivityReason
+                : undefined) ??
+              ('external_activity_reason' in s &&
+              typeof (s as {external_activity_reason?: unknown})
+                .external_activity_reason === 'string'
+                ? (s as {external_activity_reason?: string}).external_activity_reason
+                : undefined);
+            return reason && reason.length > 0
+              ? `GitHub match: ${reason}`
+              : baseReason;
+          })(),
           externalActivityBoosted:
             external ||
             ('externalActivityBoosted' in s &&
@@ -1137,12 +1152,12 @@ export class GrReplyDialog extends LitElement {
 
     addSuggestions(
       gitSuggestions as unknown[] | undefined,
-      'GitHub activity match (git-only endpoint)',
+      'Suggested from external GitHub review activity (git-only endpoint)',
       true
     );
     addSuggestions(
       serverSuggestions as unknown[] | undefined,
-      'server suggestion (combined fallback)',
+      'Suggested from Gerrit reviewer history (fallback endpoint)',
       false
     );
 
