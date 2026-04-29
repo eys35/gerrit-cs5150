@@ -97,6 +97,15 @@ import { truncatePath } from '../../../utils/path-list-util';
 import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
+const REVIEWER_WEIGHTS_STORAGE_KEY = 'gerrit.reviewerSuggestionWeights.v1';
+
+interface ReviewerSuggestionWeightState {
+  wOwnership: number;
+  wFileFamiliarity: number;
+  wEngagement: number;
+  wCrossRepo: number;
+  wAvailability: number;
+}
 
 export enum ChangeRole {
   OWNER = 'owner',
@@ -204,6 +213,7 @@ export class GrChangeMetadata extends LitElement {
 
   constructor() {
     super();
+    this.restoreReviewerWeights();
     subscribe(
       this,
       () => this.getConfigModel().serverConfig$,
@@ -749,26 +759,31 @@ export class GrChangeMetadata extends LitElement {
 
   private handleOwnershipWeightInput(e: Event) {
     this.wOwnership = this.parseSliderInput(e);
+    this.persistReviewerWeights();
     if (this.weightSum === 100) this.loadSuggestedReviewers();
   }
 
   private handleFileFamiliarityWeightInput(e: Event) {
     this.wFileFamiliarity = this.parseSliderInput(e);
+    this.persistReviewerWeights();
     if (this.weightSum === 100) this.loadSuggestedReviewers();
   }
 
   private handleEngagementWeightInput(e: Event) {
     this.wEngagement = this.parseSliderInput(e);
+    this.persistReviewerWeights();
     if (this.weightSum === 100) this.loadSuggestedReviewers();
   }
 
   private handleCrossRepoWeightInput(e: Event) {
     this.wCrossRepo = this.parseSliderInput(e);
+    this.persistReviewerWeights();
     if (this.weightSum === 100) this.loadSuggestedReviewers();
   }
 
   private handleAvailabilityWeightInput(e: Event) {
     this.wAvailability = this.parseSliderInput(e);
+    this.persistReviewerWeights();
     if (this.weightSum === 100) this.loadSuggestedReviewers();
   }
 
@@ -778,6 +793,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 60;
     this.wCrossRepo = 10;
     this.wAvailability = 10;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -787,6 +803,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 10;
     this.wCrossRepo = 5;
     this.wAvailability = 5;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -796,6 +813,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 20;
     this.wCrossRepo = 10;
     this.wAvailability = 5;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -804,6 +822,45 @@ export class GrChangeMetadata extends LitElement {
     const parsed = Number(e.target.value);
     if (!Number.isFinite(parsed)) return 0;
     return Math.min(100, Math.max(0, Math.trunc(parsed)));
+  }
+
+  private restoreReviewerWeights() {
+    const raw = localStorage.getItem(REVIEWER_WEIGHTS_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ReviewerSuggestionWeightState>;
+      if (
+        typeof parsed.wOwnership === 'number' &&
+        typeof parsed.wFileFamiliarity === 'number' &&
+        typeof parsed.wEngagement === 'number' &&
+        typeof parsed.wCrossRepo === 'number' &&
+        typeof parsed.wAvailability === 'number'
+      ) {
+        this.wOwnership = this.sanitizeWeight(parsed.wOwnership);
+        this.wFileFamiliarity = this.sanitizeWeight(parsed.wFileFamiliarity);
+        this.wEngagement = this.sanitizeWeight(parsed.wEngagement);
+        this.wCrossRepo = this.sanitizeWeight(parsed.wCrossRepo);
+        this.wAvailability = this.sanitizeWeight(parsed.wAvailability);
+      }
+    } catch {
+      // Ignore malformed persisted values and keep defaults.
+    }
+  }
+
+  private persistReviewerWeights() {
+    const payload: ReviewerSuggestionWeightState = {
+      wOwnership: this.wOwnership,
+      wFileFamiliarity: this.wFileFamiliarity,
+      wEngagement: this.wEngagement,
+      wCrossRepo: this.wCrossRepo,
+      wAvailability: this.wAvailability,
+    };
+    localStorage.setItem(REVIEWER_WEIGHTS_STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  private sanitizeWeight(value: number) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.trunc(value)));
   }
 
   private handleSuggestedReviewerClick() {
