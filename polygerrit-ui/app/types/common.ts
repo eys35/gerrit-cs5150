@@ -1251,6 +1251,10 @@ export interface SuggestedReviewerAccountInfo {
    * Optional explanation of which external activity signals matched.
    */
   externalActivityReason?: string;
+  /**
+   * Normalized reviewer score in [0..100] for this suggestion request.
+   */
+  normalizedScore?: number;
 }
 
 /**

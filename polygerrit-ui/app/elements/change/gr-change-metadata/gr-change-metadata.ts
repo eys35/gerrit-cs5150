@@ -199,6 +199,7 @@ export class GrChangeMetadata extends LitElement {
     name: string;
     reason: string;
     externalActivityBoosted?: boolean;
+    normalizedScore?: number;
   }[] = [];
 
   @state() private wOwnership = 35;
@@ -385,6 +386,11 @@ export class GrChangeMetadata extends LitElement {
           margin-left: var(--spacing-s);
           font-size: var(--font-size-small);
           color: var(--info-foreground);
+        }
+        .suggestedReviewerScore {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--deemphasized-text-color);
         }
       `,
     ];
@@ -591,6 +597,13 @@ export class GrChangeMetadata extends LitElement {
                     >— ${suggestion.reason}</span
                   >
                   ${when(
+                    suggestion.normalizedScore !== undefined,
+                    () =>
+                      html`<span class="suggestedReviewerScore"
+                        >score ${suggestion.normalizedScore!.toFixed(1)}</span
+                      >`
+                  )}
+                  ${when(
                     suggestion.externalActivityBoosted === true,
                     () =>
                       html`<span class="suggestedReviewerExternalBadge"
@@ -654,11 +667,9 @@ export class GrChangeMetadata extends LitElement {
               />
               <span>${this.wAvailability}</span>
             </label>
-            ${this.weightSum !== 100
-              ? html`<span class="reviewerWeightError">
-                  Weights must add to 100. Current sum: ${this.weightSum}
-                </span>`
-              : nothing}
+            <span class="reviewerWeightHint">
+              Weights are auto-normalized before scoring.
+            </span>
           </div>`
         )}
       </span>
@@ -669,27 +680,33 @@ export class GrChangeMetadata extends LitElement {
     if (!this.change) return;
     const changeNum = this.change._number;
     if (!changeNum) return;
-    if (this.weightSum !== 100) return;
+    const total = this.weightSum;
+    if (total <= 0) return;
+    const wOwnership = this.wOwnership / total;
+    const wFileFamiliarity = this.wFileFamiliarity / total;
+    const wEngagement = this.wEngagement / total;
+    const wCrossRepo = this.wCrossRepo / total;
+    const wAvailability = this.wAvailability / total;
     const [gitResult, serverResult] = await Promise.allSettled([
       this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
         undefined,
-        this.wOwnership / 100,
-        this.wFileFamiliarity / 100,
-        this.wEngagement / 100,
-        this.wCrossRepo / 100,
-        this.wAvailability / 100
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
       this.restApiService.getChangeSuggestedReviewers(
         changeNum,
         '',
         undefined,
-        this.wOwnership / 100,
-        this.wFileFamiliarity / 100,
-        this.wEngagement / 100,
-        this.wCrossRepo / 100,
-        this.wAvailability / 100
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
     ]);
     const gitSuggestions =
@@ -699,7 +716,12 @@ export class GrChangeMetadata extends LitElement {
 
     const merged = new Map<
       number,
-      {name: string; reason: string; externalActivityBoosted?: boolean}
+      {
+        name: string;
+        reason: string;
+        externalActivityBoosted?: boolean;
+        normalizedScore?: number;
+      }
     >();
     const addSuggestions = (
       list: unknown[] | undefined,
@@ -731,12 +753,22 @@ export class GrChangeMetadata extends LitElement {
                 ? `GitHub match: ${reason}`
                 : baseReason;
             })(),
+            normalizedScore:
+              ('normalizedScore' in s &&
+                typeof (s as {normalizedScore?: unknown}).normalizedScore ===
+                  'number')
+                ? (s as {normalizedScore?: number}).normalizedScore
+                : ('normalized_score' in s &&
+                      typeof (s as {normalized_score?: unknown})
+                        .normalized_score === 'number'
+                  ? (s as {normalized_score?: number}).normalized_score
+                  : undefined),
           externalActivityBoosted:
             external ||
             ('externalActivityBoosted' in s &&
               (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
         });
-        if (merged.size >= 3) return;
+        if (merged.size >= 5) return;
       }
     };
 
@@ -760,31 +792,31 @@ export class GrChangeMetadata extends LitElement {
   private handleOwnershipWeightInput(e: Event) {
     this.wOwnership = this.parseSliderInput(e);
     this.persistReviewerWeights();
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.loadSuggestedReviewers();
   }
 
   private handleFileFamiliarityWeightInput(e: Event) {
     this.wFileFamiliarity = this.parseSliderInput(e);
     this.persistReviewerWeights();
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.loadSuggestedReviewers();
   }
 
   private handleEngagementWeightInput(e: Event) {
     this.wEngagement = this.parseSliderInput(e);
     this.persistReviewerWeights();
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.loadSuggestedReviewers();
   }
 
   private handleCrossRepoWeightInput(e: Event) {
     this.wCrossRepo = this.parseSliderInput(e);
     this.persistReviewerWeights();
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.loadSuggestedReviewers();
   }
 
   private handleAvailabilityWeightInput(e: Event) {
     this.wAvailability = this.parseSliderInput(e);
     this.persistReviewerWeights();
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.loadSuggestedReviewers();
   }
 
   private handlePresetRecent() {

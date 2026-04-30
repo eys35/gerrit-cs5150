@@ -316,6 +316,7 @@ export class GrReplyDialog extends LitElement {
     displayName: string;
     reason: string;
     externalActivityBoosted?: boolean;
+    normalizedScore?: number;
   }[] = [];
 
   @state()
@@ -665,6 +666,11 @@ export class GrReplyDialog extends LitElement {
           font-size: var(--font-size-small);
           color: var(--info-foreground);
         }
+        .suggestedReviewerScore {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--deemphasized-text-color);
+        }
       `,
     ];
   }
@@ -984,11 +990,9 @@ export class GrReplyDialog extends LitElement {
             />
             <span>${this.wAvailability}</span>
           </label>
-          ${this.weightSum !== 100
-            ? html`<span class="reviewerWeightError">
-                Weights must add to 100. Current sum: ${this.weightSum}
-              </span>`
-            : nothing}
+          <span class="reviewerWeightHint">
+            Weights are auto-normalized before scoring.
+          </span>
         </div>
         ${suggestions.length === 0
           ? html`<span class="noSuggestedReviewers"
@@ -1008,6 +1012,13 @@ export class GrReplyDialog extends LitElement {
                       <span class="suggestedReviewerReason"
                         >— ${s.reason}</span
                       >
+                      ${when(
+                        s.normalizedScore !== undefined,
+                        () =>
+                          html`<span class="suggestedReviewerScore"
+                            >score ${s.normalizedScore!.toFixed(1)}</span
+                          >`
+                      )}
                       ${when(
                         s.externalActivityBoosted === true,
                         () =>
@@ -1200,15 +1211,16 @@ export class GrReplyDialog extends LitElement {
       this.suggestedReviewersInline = [];
       return;
     }
-    if (this.weightSum !== 100) {
+    const total = this.weightSum;
+    if (total <= 0) {
       this.suggestedReviewersInline = [];
       return;
     }
-    const wOwnership = this.wOwnership / 100;
-    const wFileFamiliarity = this.wFileFamiliarity / 100;
-    const wEngagement = this.wEngagement / 100;
-    const wCrossRepo = this.wCrossRepo / 100;
-    const wAvailability = this.wAvailability / 100;
+    const wOwnership = this.wOwnership / total;
+    const wFileFamiliarity = this.wFileFamiliarity / total;
+    const wEngagement = this.wEngagement / total;
+    const wCrossRepo = this.wCrossRepo / total;
+    const wAvailability = this.wAvailability / total;
 
     const [gitResult, serverResult] = await Promise.allSettled([
       this.restApiService.getChangeSuggestedGitReviewers(
@@ -1270,12 +1282,22 @@ export class GrReplyDialog extends LitElement {
               ? `GitHub match: ${reason}`
               : baseReason;
           })(),
+          normalizedScore:
+            ('normalizedScore' in s &&
+              typeof (s as {normalizedScore?: unknown}).normalizedScore ===
+                'number')
+              ? (s as {normalizedScore?: number}).normalizedScore
+              : ('normalized_score' in s &&
+                    typeof (s as {normalized_score?: unknown})
+                      .normalized_score === 'number'
+                ? (s as {normalized_score?: number}).normalized_score
+                : undefined),
           externalActivityBoosted:
             external ||
             ('externalActivityBoosted' in s &&
               (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
         });
-        if (merged.size >= 3) return;
+        if (merged.size >= 5) return;
       }
     };
 

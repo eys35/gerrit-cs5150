@@ -30,4 +30,9 @@ public class SuggestedReviewerInfo {
    * familiarity, engagement, or cross-repo overlap).
    */
   public String externalActivityReason;
+
+  /**
+   * Normalized reviewer score in [0..100] for this suggestion request.
+   */
+  public Double normalizedScore;
 }

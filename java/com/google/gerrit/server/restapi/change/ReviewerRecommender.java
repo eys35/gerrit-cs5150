@@ -21,6 +21,7 @@ import static java.util.stream.Collectors.toList;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableListMultimap;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.flogger.FluentLogger;
 import com.google.gerrit.common.Nullable;
@@ -91,6 +92,8 @@ public class ReviewerRecommender {
   private final GroupMembers groupMembers;
   private final ChangeData.Factory changeDataFactory;
   private final ExternalActivityStore externalActivityStore;
+  private final ThreadLocal<ImmutableMap<Account.Id, Double>> lastNormalizedScores =
+      ThreadLocal.withInitial(ImmutableMap::of);
 
   @Inject
   ReviewerRecommender(
@@ -229,6 +232,9 @@ public class ReviewerRecommender {
       int externalSeedLimit = config.getInt("algorithmicReviewer", "externalSeedLimit", 1000);
       externalActivityStore.topAccountsByActivity(externalSeedLimit).stream()
           .forEach(id -> candidateScores.put(id, new MutableDouble(0)));
+      logger.atFine().log(
+          "Reviewer scoring stage: external seeding produced %s candidates (limit=%s)",
+          candidateScores.size(), externalSeedLimit);
     } else {
       // Get the user's recent changes and add them as candidates
       double recentChangeCandidatesWeight = config.getInt("addReviewer", "baseWeight", 1);
@@ -240,6 +246,9 @@ public class ReviewerRecommender {
                   candidateScores
                       .computeIfAbsent(reviewerCandidate, (ignored) -> new MutableDouble(0))
                       .add(recentChangeCandidatesWeight));
+      logger.atFine().log(
+          "Reviewer scoring stage: initial candidate seeding produced %s candidates",
+          candidateScores.size());
     }
 
     if (!externalOnly && Strings.isNullOrEmpty(query) && candidateScores.isEmpty()) {
@@ -270,6 +279,9 @@ public class ReviewerRecommender {
             .forEach(projectOwnerId -> candidateScores.put(projectOwnerId, new MutableDouble(0)));
       }
     }
+    logger.atFine().log(
+        "Reviewer scoring stage: after fallback seeding there are %s candidates",
+        candidateScores.size());
 
     logger.atFine().log("Base candidate scores: %s", candidateScores);
 
@@ -413,11 +425,13 @@ public class ReviewerRecommender {
         logger.atFine().log("Candidate scores: %s", candidateScores);
       } catch (ExecutionException | InterruptedException e) {
         logger.atSevere().withCause(e).log("Exception while suggesting reviewers");
+        lastNormalizedScores.set(ImmutableMap.of());
         return ImmutableList.of();
       }
     }
 
     if (changeNotes != null) {
+      int beforePrune = candidateScores.size();
       // Remove change owner
       if (candidateScores.remove(changeNotes.getChange().getOwner()) != null) {
         logger.atFine().log("Remove change owner %s", changeNotes.getChange().getOwner());
@@ -433,6 +447,9 @@ public class ReviewerRecommender {
                   logger.atFine().log("Remove existing reviewer %s", r);
                 }
               });
+      logger.atFine().log(
+          "Reviewer scoring stage: pruned owner/existing reviewers from %s to %s candidates",
+          beforePrune, candidateScores.size());
     }
 
     // Sort results
@@ -440,8 +457,27 @@ public class ReviewerRecommender {
         candidateScores.entrySet().stream()
             .sorted(Map.Entry.comparingByValue(Collections.reverseOrder()));
     List<Account.Id> sortedSuggestions = sorted.map(Map.Entry::getKey).collect(toList());
-    logger.atFine().log("Sorted suggestions: %s", sortedSuggestions);
+    lastNormalizedScores.set(normalizeScores(candidateScores));
+    logger.atFine().log(
+        "Reviewer scoring stage: returning %s ranked candidates: %s",
+        sortedSuggestions.size(), sortedSuggestions);
     return sortedSuggestions;
+  }
+
+  ImmutableMap<Account.Id, Double> consumeLastNormalizedScores() {
+    ImmutableMap<Account.Id, Double> scores = lastNormalizedScores.get();
+    lastNormalizedScores.set(ImmutableMap.of());
+    return scores;
+  }
+
+  private static ImmutableMap<Account.Id, Double> normalizeScores(
+      Map<Account.Id, MutableDouble> candidateScores) {
+    if (candidateScores.isEmpty()) return ImmutableMap.of();
+    ImmutableMap.Builder<Account.Id, Double> out = ImmutableMap.builder();
+    for (Map.Entry<Account.Id, MutableDouble> e : candidateScores.entrySet()) {
+      out.put(e.getKey(), e.getValue().doubleValue());
+    }
+    return out.buildOrThrow();
   }
 
   private ImmutableList<ChangeData> queryRecentChanges(Predicate<ChangeData> predicate) {
@@ -890,7 +926,16 @@ public class ReviewerRecommender {
       @Nullable Double wRecent,
       @Nullable Double wContrib) {
     return !externalActivityReasonsForCandidate(
-            candidate, changeNotes, projectState, wRecent, wContrib)
+            candidate,
+            changeNotes,
+            projectState,
+            null,
+            null,
+            null,
+            null,
+            null,
+            wRecent,
+            wContrib)
         .isEmpty();
   }
 
@@ -899,11 +944,25 @@ public class ReviewerRecommender {
       Account.Id candidate,
       @Nullable ChangeNotes changeNotes,
       ProjectState projectState,
+      @Nullable Double wOwnership,
+      @Nullable Double wFileFamiliarity,
+      @Nullable Double wEngagement,
+      @Nullable Double wCrossRepo,
+      @Nullable Double wAvailability,
       @Nullable Double wRecent,
       @Nullable Double wContrib) {
     Set<String> reasons =
         externalActivityReasonsForCandidate(
-            candidate, changeNotes, projectState, wRecent, wContrib);
+            candidate,
+            changeNotes,
+            projectState,
+            wOwnership,
+            wFileFamiliarity,
+            wEngagement,
+            wCrossRepo,
+            wAvailability,
+            wRecent,
+            wContrib);
     if (reasons.isEmpty()) {
       return null;
     }
@@ -914,6 +973,11 @@ public class ReviewerRecommender {
       Account.Id candidate,
       @Nullable ChangeNotes changeNotes,
       ProjectState projectState,
+      @Nullable Double wOwnership,
+      @Nullable Double wFileFamiliarity,
+      @Nullable Double wEngagement,
+      @Nullable Double wCrossRepo,
+      @Nullable Double wAvailability,
       @Nullable Double wRecent,
       @Nullable Double wContrib) {
     Set<String> reasons = new LinkedHashSet<>();
@@ -924,6 +988,19 @@ public class ReviewerRecommender {
     double w2 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w2"), 0.30);
     double w3 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w3"), 0.20);
     double w4 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w4"), 0.10);
+    double w5 = parseConfigDouble(config.getString("algorithmicReviewer", null, "w5"), 0.05);
+    if (wOwnership != null) w1 = wOwnership;
+    if (wFileFamiliarity != null) w2 = wFileFamiliarity;
+    if (wEngagement != null) w3 = wEngagement;
+    if (wCrossRepo != null) w4 = wCrossRepo;
+    if (wAvailability != null) w5 = wAvailability;
+    double total = w1 + w2 + w3 + w4 + w5;
+    if (total > 0) {
+      w1 /= total;
+      w2 /= total;
+      w3 /= total;
+      w4 /= total;
+    }
     if (wContrib != null) {
       w1 *= wContrib;
     }
