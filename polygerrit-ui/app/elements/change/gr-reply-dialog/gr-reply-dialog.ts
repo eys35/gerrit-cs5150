@@ -169,6 +169,15 @@ const ButtonTooltips = {
 };
 
 const EMPTY_REPLY_MESSAGE = 'Cannot send an empty reply.';
+const REVIEWER_WEIGHTS_STORAGE_KEY = 'gerrit.reviewerSuggestionWeights.v1';
+
+interface ReviewerSuggestionWeightState {
+  wOwnership: number;
+  wFileFamiliarity: number;
+  wEngagement: number;
+  wCrossRepo: number;
+  wAvailability: number;
+}
 
 @customElement('gr-reply-dialog')
 export class GrReplyDialog extends LitElement {
@@ -307,16 +316,23 @@ export class GrReplyDialog extends LitElement {
     displayName: string;
     reason: string;
     externalActivityBoosted?: boolean;
+    normalizedScore?: number;
   }[] = [];
 
   @state()
-  useSuggestedReviewers = true;
+  wOwnership = 35;
 
   @state()
-  reviewerRecentHistoryWeight = 1;
+  wFileFamiliarity = 30;
 
   @state()
-  reviewerContributionsWeight = 1;
+  wEngagement = 20;
+
+  @state()
+  wCrossRepo = 10;
+
+  @state()
+  wAvailability = 5;
 
   private reviewerWeightRefreshTask?: DelayedTask;
 
@@ -633,8 +649,14 @@ export class GrReplyDialog extends LitElement {
           font-size: var(--font-size-small);
           color: var(--deemphasized-text-color);
         }
+        .reviewerWeightRow {
+          display: grid;
+          grid-template-columns: 170px minmax(120px, 1fr) 24px;
+          align-items: center;
+          gap: var(--spacing-s);
+        }
         .reviewerWeights input {
-          width: 40px;
+          width: 100%;
         }
         .suggestedReviewerReason {
           color: var(--deemphasized-text-color);
@@ -643,6 +665,11 @@ export class GrReplyDialog extends LitElement {
           margin-left: var(--spacing-s);
           font-size: var(--font-size-small);
           color: var(--info-foreground);
+        }
+        .suggestedReviewerScore {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--deemphasized-text-color);
         }
       `,
     ];
@@ -741,6 +768,7 @@ export class GrReplyDialog extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    this.restoreReviewerWeights();
     ironAnnouncerRequestAvailability();
 
     this.getPluginLoader().jsApiService.addElement(
@@ -899,43 +927,74 @@ export class GrReplyDialog extends LitElement {
     return html`
       <div class="suggestedReviewers">
         <div class="suggestedReviewersTitle">
-          <label>
-            <input
-              type="checkbox"
-              .checked=${this.useSuggestedReviewers}
-              @change=${this.handleUseSuggestedReviewersChanged}
-            />
-            Use suggested reviewers
-          </label>
+          Suggested reviewers
         </div>
         <div class="reviewerWeights">
-          <label>
-            Recent history weight
+          <label class="reviewerWeightRow">
+            <span>Ownership</span>
             <input
-              type="number"
+              type="range"
               min="0"
-              max="10"
+              max="100"
               step="1"
-              .value=${String(this.reviewerRecentHistoryWeight)}
-              @input=${this.handleRecentHistoryWeightInput}
+              .value=${String(this.wOwnership)}
+              @input=${this.handleOwnershipWeightInput}
             />
+            <span>${this.wOwnership}</span>
           </label>
-          <label>
-            Contributions weight
+          <label class="reviewerWeightRow">
+            <span>File familiarity</span>
             <input
-              type="number"
+              type="range"
               min="0"
-              max="10"
+              max="100"
               step="1"
-              .value=${String(this.reviewerContributionsWeight)}
-              @input=${this.handleContributionsWeightInput}
+              .value=${String(this.wFileFamiliarity)}
+              @input=${this.handleFileFamiliarityWeightInput}
             />
+            <span>${this.wFileFamiliarity}</span>
           </label>
+          <label class="reviewerWeightRow">
+            <span>Engagement</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              .value=${String(this.wEngagement)}
+              @input=${this.handleEngagementWeightInput}
+            />
+            <span>${this.wEngagement}</span>
+          </label>
+          <label class="reviewerWeightRow">
+            <span>Cross-repo</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              .value=${String(this.wCrossRepo)}
+              @input=${this.handleCrossRepoWeightInput}
+            />
+            <span>${this.wCrossRepo}</span>
+          </label>
+          <label class="reviewerWeightRow">
+            <span>Availability</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              .value=${String(this.wAvailability)}
+              @input=${this.handleAvailabilityWeightInput}
+            />
+            <span>${this.wAvailability}</span>
+          </label>
+          <span class="reviewerWeightHint">
+            Weights are auto-normalized before scoring.
+          </span>
         </div>
-        ${when(
-      this.useSuggestedReviewers,
-      () =>
-        suggestions.length === 0
+        ${suggestions.length === 0
           ? html`<span class="noSuggestedReviewers"
                   >no suggested reviewers</span
                 >`
@@ -954,32 +1013,54 @@ export class GrReplyDialog extends LitElement {
                         >— ${s.reason}</span
                       >
                       ${when(
+                        s.normalizedScore !== undefined,
+                        () =>
+                          html`<span class="suggestedReviewerScore"
+                            >score ${s.normalizedScore!.toFixed(1)}</span
+                          >`
+                      )}
+                      ${when(
                         s.externalActivityBoosted === true,
                         () =>
                           html`<span class="suggestedReviewerExternalBadge"
-                            >external activity matched</span
+                            >GitHub signal</span
                           >`
                       )}
                     </li>`
           )}
                 </ul>`
-    )}
+    }
       </div>
     `;
   }
 
-  private handleUseSuggestedReviewersChanged(e: Event) {
-    if (!(e.target instanceof HTMLInputElement)) return;
-    this.useSuggestedReviewers = e.target.checked;
-  }
-
-  private handleRecentHistoryWeightInput(e: Event) {
-    this.reviewerRecentHistoryWeight = this.parseWeightInput(e);
+  private handleOwnershipWeightInput(e: Event) {
+    this.wOwnership = this.parseWeightInput(e, 100, 0);
+    this.persistReviewerWeights();
     this.scheduleSuggestedReviewerRefresh();
   }
 
-  private handleContributionsWeightInput(e: Event) {
-    this.reviewerContributionsWeight = this.parseWeightInput(e);
+  private handleFileFamiliarityWeightInput(e: Event) {
+    this.wFileFamiliarity = this.parseWeightInput(e, 100, 0);
+    this.persistReviewerWeights();
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private handleEngagementWeightInput(e: Event) {
+    this.wEngagement = this.parseWeightInput(e, 100, 0);
+    this.persistReviewerWeights();
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private handleCrossRepoWeightInput(e: Event) {
+    this.wCrossRepo = this.parseWeightInput(e, 100, 0);
+    this.persistReviewerWeights();
+    this.scheduleSuggestedReviewerRefresh();
+  }
+
+  private handleAvailabilityWeightInput(e: Event) {
+    this.wAvailability = this.parseWeightInput(e, 100, 0);
+    this.persistReviewerWeights();
     this.scheduleSuggestedReviewerRefresh();
   }
 
@@ -991,12 +1072,62 @@ export class GrReplyDialog extends LitElement {
     );
   }
 
-  private parseWeightInput(e: Event) {
-    if (!(e.target instanceof HTMLInputElement)) return 1;
+  private parseWeightInput(e: Event, max = 10, fallback = 1) {
+    if (!(e.target instanceof HTMLInputElement)) return fallback;
     const parsed = Number(e.target.value);
-    if (!Number.isFinite(parsed)) return 1;
-    return Math.min(10, Math.max(0, Math.trunc(parsed)));
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(0, Math.trunc(parsed)));
 
+  }
+
+  private get weightSum() {
+    return (
+      this.wOwnership +
+      this.wFileFamiliarity +
+      this.wEngagement +
+      this.wCrossRepo +
+      this.wAvailability
+    );
+
+  }
+
+  private restoreReviewerWeights() {
+    const raw = localStorage.getItem(REVIEWER_WEIGHTS_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ReviewerSuggestionWeightState>;
+      if (
+        typeof parsed.wOwnership === 'number' &&
+        typeof parsed.wFileFamiliarity === 'number' &&
+        typeof parsed.wEngagement === 'number' &&
+        typeof parsed.wCrossRepo === 'number' &&
+        typeof parsed.wAvailability === 'number'
+      ) {
+        this.wOwnership = this.sanitizeWeight(parsed.wOwnership);
+        this.wFileFamiliarity = this.sanitizeWeight(parsed.wFileFamiliarity);
+        this.wEngagement = this.sanitizeWeight(parsed.wEngagement);
+        this.wCrossRepo = this.sanitizeWeight(parsed.wCrossRepo);
+        this.wAvailability = this.sanitizeWeight(parsed.wAvailability);
+      }
+    } catch {
+      // Ignore malformed persisted values and keep defaults.
+    }
+  }
+
+  private persistReviewerWeights() {
+    const payload: ReviewerSuggestionWeightState = {
+      wOwnership: this.wOwnership,
+      wFileFamiliarity: this.wFileFamiliarity,
+      wEngagement: this.wEngagement,
+      wCrossRepo: this.wCrossRepo,
+      wAvailability: this.wAvailability,
+    };
+    localStorage.setItem(REVIEWER_WEIGHTS_STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  private sanitizeWeight(value: number) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.trunc(value)));
   }
   private handleSuggestedReviewerInlineClick(account: AccountInfo) {
     if (!this.reviewersList) return;
@@ -1080,27 +1211,37 @@ export class GrReplyDialog extends LitElement {
       this.suggestedReviewersInline = [];
       return;
     }
+    const total = this.weightSum;
+    if (total <= 0) {
+      this.suggestedReviewersInline = [];
+      return;
+    }
+    const wOwnership = this.wOwnership / total;
+    const wFileFamiliarity = this.wFileFamiliarity / total;
+    const wEngagement = this.wEngagement / total;
+    const wCrossRepo = this.wCrossRepo / total;
+    const wAvailability = this.wAvailability / total;
 
     const [gitResult, serverResult] = await Promise.allSettled([
       this.restApiService.getChangeSuggestedGitReviewers(
         this.change._number,
         '',
         undefined,
-        this.reviewerContributionsWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerContributionsWeight,
-        1
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
       this.restApiService.getChangeSuggestedReviewers(
         this.change._number,
         '',
         undefined,
-        this.reviewerContributionsWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerRecentHistoryWeight,
-        this.reviewerContributionsWeight,
-        1
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
     ]);
 
@@ -1125,24 +1266,49 @@ export class GrReplyDialog extends LitElement {
         merged.set(id, {
           account,
           displayName: account.name ?? account.email ?? `User ${id}`,
-          reason: baseReason,
+          reason: (() => {
+            const reason =
+              ('externalActivityReason' in s &&
+              typeof (s as {externalActivityReason?: unknown})
+                .externalActivityReason === 'string'
+                ? (s as {externalActivityReason?: string}).externalActivityReason
+                : undefined) ??
+              ('external_activity_reason' in s &&
+              typeof (s as {external_activity_reason?: unknown})
+                .external_activity_reason === 'string'
+                ? (s as {external_activity_reason?: string}).external_activity_reason
+                : undefined);
+            return reason && reason.length > 0
+              ? `GitHub match: ${reason}`
+              : baseReason;
+          })(),
+          normalizedScore:
+            ('normalizedScore' in s &&
+              typeof (s as {normalizedScore?: unknown}).normalizedScore ===
+                'number')
+              ? (s as {normalizedScore?: number}).normalizedScore
+              : ('normalized_score' in s &&
+                    typeof (s as {normalized_score?: unknown})
+                      .normalized_score === 'number'
+                ? (s as {normalized_score?: number}).normalized_score
+                : undefined),
           externalActivityBoosted:
             external ||
             ('externalActivityBoosted' in s &&
               (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
         });
-        if (merged.size >= 3) return;
+        if (merged.size >= 5) return;
       }
     };
 
     addSuggestions(
       gitSuggestions as unknown[] | undefined,
-      'GitHub activity match (git-only endpoint)',
+      'Suggested from external GitHub review activity (git-only endpoint)',
       true
     );
     addSuggestions(
       serverSuggestions as unknown[] | undefined,
-      'server suggestion (combined fallback)',
+      'Suggested from Gerrit reviewer history (fallback endpoint)',
       false
     );
 
@@ -1502,6 +1668,8 @@ export class GrReplyDialog extends LitElement {
    * should be called `onOpened()` or `initialize()`?
    */
   open(focusTarget?: FocusTarget) {
+    this.restoreReviewerWeights();
+    this.scheduleSuggestedReviewerRefresh();
     assertIsDefined(this.change, 'change');
     this.knownLatestState = LatestPatchState.CHECKING;
     this.getChangeModel()

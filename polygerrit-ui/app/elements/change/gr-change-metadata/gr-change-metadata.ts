@@ -97,6 +97,15 @@ import { truncatePath } from '../../../utils/path-list-util';
 import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
+const REVIEWER_WEIGHTS_STORAGE_KEY = 'gerrit.reviewerSuggestionWeights.v1';
+
+interface ReviewerSuggestionWeightState {
+  wOwnership: number;
+  wFileFamiliarity: number;
+  wEngagement: number;
+  wCrossRepo: number;
+  wAvailability: number;
+}
 
 export enum ChangeRole {
   OWNER = 'owner',
@@ -190,6 +199,7 @@ export class GrChangeMetadata extends LitElement {
     name: string;
     reason: string;
     externalActivityBoosted?: boolean;
+    normalizedScore?: number;
   }[] = [];
 
   @state() private wOwnership = 35;
@@ -204,6 +214,7 @@ export class GrChangeMetadata extends LitElement {
 
   constructor() {
     super();
+    this.restoreReviewerWeights();
     subscribe(
       this,
       () => this.getConfigModel().serverConfig$,
@@ -375,6 +386,11 @@ export class GrChangeMetadata extends LitElement {
           margin-left: var(--spacing-s);
           font-size: var(--font-size-small);
           color: var(--info-foreground);
+        }
+        .suggestedReviewerScore {
+          margin-left: var(--spacing-s);
+          font-size: var(--font-size-small);
+          color: var(--deemphasized-text-color);
         }
       `,
     ];
@@ -581,10 +597,17 @@ export class GrChangeMetadata extends LitElement {
                     >— ${suggestion.reason}</span
                   >
                   ${when(
+                    suggestion.normalizedScore !== undefined,
+                    () =>
+                      html`<span class="suggestedReviewerScore"
+                        >score ${suggestion.normalizedScore!.toFixed(1)}</span
+                      >`
+                  )}
+                  ${when(
                     suggestion.externalActivityBoosted === true,
                     () =>
                       html`<span class="suggestedReviewerExternalBadge"
-                        >external activity matched</span
+                        >GitHub signal</span
                       >`
                   )}
                 </li>`
@@ -644,11 +667,9 @@ export class GrChangeMetadata extends LitElement {
               />
               <span>${this.wAvailability}</span>
             </label>
-            ${this.weightSum !== 100
-              ? html`<span class="reviewerWeightError">
-                  Weights must add to 100. Current sum: ${this.weightSum}
-                </span>`
-              : nothing}
+            <span class="reviewerWeightHint">
+              Weights are auto-normalized before scoring.
+            </span>
           </div>`
         )}
       </span>
@@ -659,27 +680,33 @@ export class GrChangeMetadata extends LitElement {
     if (!this.change) return;
     const changeNum = this.change._number;
     if (!changeNum) return;
-    if (this.weightSum !== 100) return;
+    const total = this.weightSum;
+    if (total <= 0) return;
+    const wOwnership = this.wOwnership / total;
+    const wFileFamiliarity = this.wFileFamiliarity / total;
+    const wEngagement = this.wEngagement / total;
+    const wCrossRepo = this.wCrossRepo / total;
+    const wAvailability = this.wAvailability / total;
     const [gitResult, serverResult] = await Promise.allSettled([
       this.restApiService.getChangeSuggestedGitReviewers(
         changeNum,
         '',
         undefined,
-        this.wOwnership / 100,
-        this.wFileFamiliarity / 100,
-        this.wEngagement / 100,
-        this.wCrossRepo / 100,
-        this.wAvailability / 100
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
       this.restApiService.getChangeSuggestedReviewers(
         changeNum,
         '',
         undefined,
-        this.wOwnership / 100,
-        this.wFileFamiliarity / 100,
-        this.wEngagement / 100,
-        this.wCrossRepo / 100,
-        this.wAvailability / 100
+        wOwnership,
+        wFileFamiliarity,
+        wEngagement,
+        wCrossRepo,
+        wAvailability
       ),
     ]);
     const gitSuggestions =
@@ -689,7 +716,12 @@ export class GrChangeMetadata extends LitElement {
 
     const merged = new Map<
       number,
-      {name: string; reason: string; externalActivityBoosted?: boolean}
+      {
+        name: string;
+        reason: string;
+        externalActivityBoosted?: boolean;
+        normalizedScore?: number;
+      }
     >();
     const addSuggestions = (
       list: unknown[] | undefined,
@@ -705,24 +737,49 @@ export class GrChangeMetadata extends LitElement {
         if (merged.has(id)) continue;
         merged.set(id, {
           name: account.name ?? account.email ?? `User ${id}`,
-          reason: baseReason,
+            reason: (() => {
+              const reason =
+                ('externalActivityReason' in s &&
+                typeof (s as {externalActivityReason?: unknown})
+                  .externalActivityReason === 'string'
+                  ? (s as {externalActivityReason?: string}).externalActivityReason
+                  : undefined) ??
+                ('external_activity_reason' in s &&
+                typeof (s as {external_activity_reason?: unknown})
+                  .external_activity_reason === 'string'
+                  ? (s as {external_activity_reason?: string}).external_activity_reason
+                  : undefined);
+              return reason && reason.length > 0
+                ? `GitHub match: ${reason}`
+                : baseReason;
+            })(),
+            normalizedScore:
+              ('normalizedScore' in s &&
+                typeof (s as {normalizedScore?: unknown}).normalizedScore ===
+                  'number')
+                ? (s as {normalizedScore?: number}).normalizedScore
+                : ('normalized_score' in s &&
+                      typeof (s as {normalized_score?: unknown})
+                        .normalized_score === 'number'
+                  ? (s as {normalized_score?: number}).normalized_score
+                  : undefined),
           externalActivityBoosted:
             external ||
             ('externalActivityBoosted' in s &&
               (s as {externalActivityBoosted?: boolean}).externalActivityBoosted === true),
         });
-        if (merged.size >= 3) return;
+        if (merged.size >= 5) return;
       }
     };
 
     addSuggestions(
       gitSuggestions as unknown[] | undefined,
-      'GitHub activity match (git-only endpoint)',
+      'Suggested from external GitHub review activity (git-only endpoint)',
       true
     );
     addSuggestions(
       serverSuggestions as unknown[] | undefined,
-      'server suggestion (combined fallback)',
+      'Suggested from Gerrit reviewer history (fallback endpoint)',
       false
     );
     this.suggestedReviewers = Array.from(merged.values());
@@ -734,27 +791,32 @@ export class GrChangeMetadata extends LitElement {
 
   private handleOwnershipWeightInput(e: Event) {
     this.wOwnership = this.parseSliderInput(e);
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.persistReviewerWeights();
+    this.loadSuggestedReviewers();
   }
 
   private handleFileFamiliarityWeightInput(e: Event) {
     this.wFileFamiliarity = this.parseSliderInput(e);
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.persistReviewerWeights();
+    this.loadSuggestedReviewers();
   }
 
   private handleEngagementWeightInput(e: Event) {
     this.wEngagement = this.parseSliderInput(e);
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.persistReviewerWeights();
+    this.loadSuggestedReviewers();
   }
 
   private handleCrossRepoWeightInput(e: Event) {
     this.wCrossRepo = this.parseSliderInput(e);
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.persistReviewerWeights();
+    this.loadSuggestedReviewers();
   }
 
   private handleAvailabilityWeightInput(e: Event) {
     this.wAvailability = this.parseSliderInput(e);
-    if (this.weightSum === 100) this.loadSuggestedReviewers();
+    this.persistReviewerWeights();
+    this.loadSuggestedReviewers();
   }
 
   private handlePresetRecent() {
@@ -763,6 +825,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 60;
     this.wCrossRepo = 10;
     this.wAvailability = 10;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -772,6 +835,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 10;
     this.wCrossRepo = 5;
     this.wAvailability = 5;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -781,6 +845,7 @@ export class GrChangeMetadata extends LitElement {
     this.wEngagement = 20;
     this.wCrossRepo = 10;
     this.wAvailability = 5;
+    this.persistReviewerWeights();
     this.loadSuggestedReviewers();
   }
 
@@ -789,6 +854,45 @@ export class GrChangeMetadata extends LitElement {
     const parsed = Number(e.target.value);
     if (!Number.isFinite(parsed)) return 0;
     return Math.min(100, Math.max(0, Math.trunc(parsed)));
+  }
+
+  private restoreReviewerWeights() {
+    const raw = localStorage.getItem(REVIEWER_WEIGHTS_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ReviewerSuggestionWeightState>;
+      if (
+        typeof parsed.wOwnership === 'number' &&
+        typeof parsed.wFileFamiliarity === 'number' &&
+        typeof parsed.wEngagement === 'number' &&
+        typeof parsed.wCrossRepo === 'number' &&
+        typeof parsed.wAvailability === 'number'
+      ) {
+        this.wOwnership = this.sanitizeWeight(parsed.wOwnership);
+        this.wFileFamiliarity = this.sanitizeWeight(parsed.wFileFamiliarity);
+        this.wEngagement = this.sanitizeWeight(parsed.wEngagement);
+        this.wCrossRepo = this.sanitizeWeight(parsed.wCrossRepo);
+        this.wAvailability = this.sanitizeWeight(parsed.wAvailability);
+      }
+    } catch {
+      // Ignore malformed persisted values and keep defaults.
+    }
+  }
+
+  private persistReviewerWeights() {
+    const payload: ReviewerSuggestionWeightState = {
+      wOwnership: this.wOwnership,
+      wFileFamiliarity: this.wFileFamiliarity,
+      wEngagement: this.wEngagement,
+      wCrossRepo: this.wCrossRepo,
+      wAvailability: this.wAvailability,
+    };
+    localStorage.setItem(REVIEWER_WEIGHTS_STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  private sanitizeWeight(value: number) {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.trunc(value)));
   }
 
   private handleSuggestedReviewerClick() {

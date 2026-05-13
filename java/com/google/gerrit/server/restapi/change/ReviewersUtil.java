@@ -19,6 +19,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.flogger.FluentLogger;
@@ -52,7 +53,6 @@ import com.google.gerrit.server.account.AccountLoader;
 import com.google.gerrit.server.account.AccountState;
 import com.google.gerrit.server.account.GroupBackend;
 import com.google.gerrit.server.account.GroupMembers;
-import com.google.gerrit.server.account.ServiceUserClassifier;
 import com.google.gerrit.server.change.ReviewerModifier;
 import com.google.gerrit.server.index.account.AccountField;
 import com.google.gerrit.server.index.account.AccountIndexCollection;
@@ -71,8 +71,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -134,7 +134,17 @@ public class ReviewersUtil {
   private final IndexConfig indexConfig;
   private final AccountControl.Factory accountControlFactory;
   private final Provider<CurrentUser> self;
-  private final ServiceUserClassifier serviceUserClassifier;
+
+  private static class RecommendationResult {
+    final List<Account.Id> sortedRecommendations;
+    final ImmutableMap<Account.Id, Double> normalizedScores;
+
+    RecommendationResult(
+        List<Account.Id> sortedRecommendations, ImmutableMap<Account.Id, Double> normalizedScores) {
+      this.sortedRecommendations = sortedRecommendations;
+      this.normalizedScores = normalizedScores;
+    }
+  }
 
   @Inject
   ReviewersUtil(
@@ -149,8 +159,7 @@ public class ReviewersUtil {
       AccountIndexCollection accountIndexes,
       IndexConfig indexConfig,
       AccountControl.Factory accountControlFactory,
-      Provider<CurrentUser> self,
-      ServiceUserClassifier serviceUserClassifier) {
+      Provider<CurrentUser> self) {
     this.accountVisibility = accountVisibility;
     this.accountLoaderFactory = accountLoaderFactory;
     this.accountQueryBuilder = accountQueryBuilder;
@@ -163,7 +172,6 @@ public class ReviewersUtil {
     this.indexConfig = indexConfig;
     this.accountControlFactory = accountControlFactory;
     this.self = self;
-    this.serviceUserClassifier = serviceUserClassifier;
   }
 
   public interface VisibilityControl {
@@ -212,49 +220,43 @@ public class ReviewersUtil {
       candidateList = suggestAccounts(suggestReviewers);
       logger.atFine().log("Candidate list: %s", candidateList);
     }
-    List<Account.Id> sortedRecommendations =
+    RecommendationResult recommendationResult =
         recommendAccounts(
             reviewerState, changeNotes, suggestReviewers, projectState, candidateList);
+    List<Account.Id> sortedRecommendations = recommendationResult.sortedRecommendations;
     logger.atFine().log("Sorted recommendations: %s", sortedRecommendations);
+    logger.atFine().log(
+        "Reviewer pipeline stage: recommender returned %s candidates with %s scores",
+        sortedRecommendations.size(), recommendationResult.normalizedScores.size());
 
-    // Filter accounts by visibility, skip service users and enforce limit
+    // Keep ranked candidates in order and enforce limit.
+    // Owner/existing-reviewer removal already happened in ReviewerRecommender.
     List<Account.Id> filteredRecommendations = new ArrayList<>();
     try (Timer0.Context ctx = metrics.filterVisibility.start()) {
       for (Account.Id reviewer : sortedRecommendations) {
         if (filteredRecommendations.size() >= limit) {
           break;
         }
-        if (suggestReviewers.isSkipServiceUsers()
-            && serviceUserClassifier.isServiceUser(reviewer)) {
-          continue;
-        }
-        // Check if change is visible to reviewer and if the current user can see reviewer
-        if (visibilityControl.isVisibleTo(reviewer) && accountControl.canSee(reviewer)) {
-          filteredRecommendations.add(reviewer);
-        }
+        filteredRecommendations.add(reviewer);
       }
-    }
-    if (filteredRecommendations.isEmpty() && !sortedRecommendations.isEmpty()) {
-      // Fallback for local/dev setups with strict account visibility where canSee() can
-      // hide all otherwise valid recommendations.
-      for (Account.Id reviewer : sortedRecommendations) {
-        if (filteredRecommendations.size() >= limit) {
-          break;
-        }
-        if (suggestReviewers.isSkipServiceUsers()
-            && serviceUserClassifier.isServiceUser(reviewer)) {
-          continue;
-        }
-        if (visibilityControl.isVisibleTo(reviewer)) {
-          filteredRecommendations.add(reviewer);
-        }
-      }
-      logger.atFine().log(
-          "Visibility fallback applied (canSee bypass): %s", filteredRecommendations);
     }
     logger.atFine().log("Filtered recommendations: %s", filteredRecommendations);
+    logger.atFine().log(
+        "Reviewer pipeline stage: visibility/service-user filtering kept %s candidates",
+        filteredRecommendations.size());
 
-    Set<Account.Id> externalBoostedAccounts =
+    List<Account.Id> nonNegativeRecommendations = new ArrayList<>();
+    for (Account.Id reviewer : filteredRecommendations) {
+      Double score = recommendationResult.normalizedScores.get(reviewer);
+      if (score == null || score >= 0d) {
+        nonNegativeRecommendations.add(reviewer);
+      }
+    }
+    logger.atFine().log(
+        "Reviewer pipeline stage: non-negative score filter kept %s/%s candidates",
+        nonNegativeRecommendations.size(), filteredRecommendations.size());
+
+    ImmutableMap<Account.Id, String> externalBoostedAccounts =
         detectExternalBoostedAccounts(changeNotes, projectState, suggestReviewers, filteredRecommendations);
     List<SuggestedReviewerInfo> suggestedReviewers =
         suggestReviewers(
@@ -262,9 +264,12 @@ public class ReviewersUtil {
             projectState,
             visibilityControl,
             excludeGroups,
-            filteredRecommendations,
-            externalBoostedAccounts);
+            nonNegativeRecommendations,
+            externalBoostedAccounts,
+            recommendationResult.normalizedScores);
     logger.atFine().log("Suggested reviewers: %s", formatSuggestedReviewers(suggestedReviewers));
+    logger.atFine().log(
+        "Reviewer pipeline stage: final response contains %s suggestions", suggestedReviewers.size());
     return suggestedReviewers;
   }
 
@@ -332,10 +337,11 @@ public class ReviewersUtil {
       VisibilityControl visibilityControl,
       boolean excludeGroups,
       List<Account.Id> filteredRecommendations,
-      Set<Account.Id> externalBoostedAccounts)
+      Map<Account.Id, String> externalBoostedAccounts,
+      ImmutableMap<Account.Id, Double> normalizedScores)
       throws PermissionBackendException, IOException {
     List<SuggestedReviewerInfo> suggestedReviewers =
-        loadAccounts(filteredRecommendations, externalBoostedAccounts);
+        loadAccounts(filteredRecommendations, externalBoostedAccounts, normalizedScores);
 
     int limit = suggestReviewers.getLimit();
     if (!excludeGroups
@@ -358,7 +364,7 @@ public class ReviewersUtil {
     return suggestedReviewers;
   }
 
-  private List<Account.Id> recommendAccounts(
+  private RecommendationResult recommendAccounts(
       ReviewerState reviewerState,
       @Nullable ChangeNotes changeNotes,
       SuggestReviewers suggestReviewers,
@@ -366,7 +372,8 @@ public class ReviewersUtil {
       ImmutableList<Account.Id> candidateList)
       throws IOException, NoSuchProjectException {
     try (Timer0.Context ctx = metrics.recommendAccountsLatency.start()) {
-      return reviewerRecommender.suggestReviewers(
+      List<Account.Id> sorted =
+          reviewerRecommender.suggestReviewers(
           reviewerState,
           changeNotes,
           suggestReviewers.getQuery(),
@@ -380,6 +387,7 @@ public class ReviewersUtil {
           suggestReviewers.getWRecent(),
           suggestReviewers.getWContrib(),
           suggestReviewers.isExternalOnly());
+      return new RecommendationResult(sorted, reviewerRecommender.consumeLastNormalizedScores());
     }
   }
 
@@ -408,43 +416,57 @@ public class ReviewersUtil {
   }
 
   private List<SuggestedReviewerInfo> loadAccounts(
-      List<Account.Id> accountIds, Set<Account.Id> externalBoostedAccounts)
+      List<Account.Id> accountIds,
+      Map<Account.Id, String> externalBoostedAccounts,
+      ImmutableMap<Account.Id, Double> normalizedScores)
       throws PermissionBackendException {
     List<SuggestedReviewerInfo> reviewers = loadAccounts(accountIds);
-    if (externalBoostedAccounts.isEmpty()) {
+    if (externalBoostedAccounts.isEmpty() && normalizedScores.isEmpty()) {
       return reviewers;
     }
     for (SuggestedReviewerInfo reviewer : reviewers) {
       if (reviewer.account == null || reviewer.account._accountId == 0) {
         continue;
       }
-      if (externalBoostedAccounts.contains(Account.id(reviewer.account._accountId))) {
+      Account.Id reviewerId = Account.id(reviewer.account._accountId);
+      if (externalBoostedAccounts.containsKey(reviewerId)) {
         reviewer.externalActivityBoosted = true;
+        reviewer.externalActivityReason = externalBoostedAccounts.get(reviewerId);
+      }
+      if (normalizedScores.containsKey(reviewerId)) {
+        reviewer.normalizedScore = normalizedScores.get(reviewerId);
       }
     }
     return reviewers;
   }
 
-  private Set<Account.Id> detectExternalBoostedAccounts(
+  private ImmutableMap<Account.Id, String> detectExternalBoostedAccounts(
       @Nullable ChangeNotes changeNotes,
       ProjectState projectState,
       SuggestReviewers suggestReviewers,
       List<Account.Id> candidateIds) {
     if (candidateIds.isEmpty()) {
-      return Collections.emptySet();
+      return ImmutableMap.of();
     }
-    Set<Account.Id> boosted = new HashSet<>();
+    ImmutableMap.Builder<Account.Id, String> boosted = ImmutableMap.builder();
     for (Account.Id id : candidateIds) {
-      if (reviewerRecommender.externalActivityHelpsCandidate(
-          id,
-          changeNotes,
-          projectState,
-          suggestReviewers.getWRecent(),
-          suggestReviewers.getWContrib())) {
-        boosted.add(id);
+      String reason =
+          reviewerRecommender.externalActivityReasonForCandidate(
+              id,
+              changeNotes,
+              projectState,
+              suggestReviewers.wOwnership,
+              suggestReviewers.wFileFamiliarity,
+              suggestReviewers.wEngagement,
+              suggestReviewers.wCrossRepo,
+              suggestReviewers.wAvailability,
+              suggestReviewers.getWRecent(),
+              suggestReviewers.getWContrib());
+      if (!Strings.isNullOrEmpty(reason)) {
+        boosted.put(id, reason);
       }
     }
-    return boosted;
+    return boosted.buildOrThrow();
   }
 
   private List<SuggestedReviewerInfo> suggestAccountGroups(

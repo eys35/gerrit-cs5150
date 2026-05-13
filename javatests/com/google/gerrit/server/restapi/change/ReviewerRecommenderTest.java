@@ -400,6 +400,146 @@ public class ReviewerRecommenderTest {
   }
 
   @Test
+  public void externalActivityExtensionSimilarityBoostsFileFamiliarity() throws Exception {
+    logScenario("external familiarity uses file-extension similarity when exact path overlap is absent");
+    Account.Id extensionSimilarId = Account.id(913);
+    Account.Id baselineId = Account.id(914);
+
+    ChangeNotes changeNotes = mock(ChangeNotes.class);
+    ChangeNotes loadedNotes = mock(ChangeNotes.class);
+    Change change = mock(Change.class);
+    ChangeData targetChangeData = mock(ChangeData.class);
+
+    when(query.query(org.mockito.ArgumentMatchers.<Predicate<ChangeData>>any()))
+        .thenReturn(ImmutableList.of(), ImmutableList.of(), ImmutableList.of());
+    when(changeNotes.load()).thenReturn(loadedNotes);
+    when(changeNotes.getChange()).thenReturn(change);
+    when(change.getOwner()).thenReturn(Account.id(999));
+    when(changeDataFactory.create(loadedNotes)).thenReturn(targetChangeData);
+    when(targetChangeData.currentFilePaths()).thenReturn(ImmutableList.of("src/feature/foo.ts"));
+    when(targetChangeData.getId()).thenReturn(Change.id(205));
+    when(approvalsUtil.getReviewers(changeNotes)).thenReturn(reviewerSet());
+
+    rebuildRecommenderWith(
+        ExternalActivityStore.forTesting(
+            ImmutableList.of(
+                new ExternalActivityStore.Row(
+                    extensionSimilarId.get(), "acme/widgets", "lib/utils/bar.ts", 0, "github"))));
+
+    ImmutableList<Account.Id> result =
+        ImmutableList.copyOf(
+            recommender.suggestReviewers(
+                ReviewerState.REVIEWER,
+                changeNotes,
+                "",
+                projectState,
+                ImmutableList.of(baselineId, extensionSimilarId),
+                /* wOwnership= */ 0.0,
+                /* wFileFamiliarity= */ 1.0,
+                /* wEngagement= */ 0.0,
+                /* wCrossRepo= */ 0.0,
+                /* wAvailability= */ 0.0));
+
+    assertThat(result).containsExactly(extensionSimilarId, baselineId).inOrder();
+  }
+
+  @Test
+  public void externalOwnershipUsesWOwnershipWeight() throws Exception {
+    logScenario("wOwnership boosts candidates with external activity in the target project");
+    Account.Id ownsTargetProjectId = Account.id(901);
+    Account.Id otherProjectOnlyId = Account.id(902);
+
+    ChangeNotes changeNotes = mock(ChangeNotes.class);
+    ChangeNotes loadedNotes = mock(ChangeNotes.class);
+    Change change = mock(Change.class);
+    ChangeData targetChangeData = mock(ChangeData.class);
+
+    when(query.query(org.mockito.ArgumentMatchers.<Predicate<ChangeData>>any()))
+        .thenReturn(ImmutableList.of(), ImmutableList.of(), ImmutableList.of());
+    when(changeNotes.load()).thenReturn(loadedNotes);
+    when(changeNotes.getChange()).thenReturn(change);
+    when(change.getOwner()).thenReturn(Account.id(999));
+    when(changeDataFactory.create(loadedNotes)).thenReturn(targetChangeData);
+    when(targetChangeData.currentFilePaths()).thenReturn(ImmutableList.of("src/foo.ts"));
+    when(targetChangeData.getId()).thenReturn(Change.id(203));
+    when(approvalsUtil.getReviewers(changeNotes)).thenReturn(reviewerSet());
+
+    rebuildRecommenderWith(
+        ExternalActivityStore.forTesting(
+            ImmutableList.of(
+                new ExternalActivityStore.Row(
+                    ownsTargetProjectId.get(), projectName.get(), "src/unrelated.ts", 0, "github"),
+                new ExternalActivityStore.Row(
+                    otherProjectOnlyId.get(), "acme/other-repo", "src/unrelated.ts", 0, "github"))));
+
+    ImmutableList<Account.Id> result =
+        ImmutableList.copyOf(
+            recommender.suggestReviewers(
+                ReviewerState.REVIEWER,
+                changeNotes,
+                "",
+                projectState,
+                ImmutableList.of(otherProjectOnlyId, ownsTargetProjectId),
+                /* wOwnership= */ 1.0,
+                /* wFileFamiliarity= */ 0.0,
+                /* wEngagement= */ 0.0,
+                /* wCrossRepo= */ 0.0,
+                /* wAvailability= */ 0.0));
+
+    assertThat(result).containsExactly(ownsTargetProjectId, otherProjectOnlyId).inOrder();
+  }
+
+  @Test
+  public void externalAvailabilityUsesWAvailabilityWeightAsPenalty() throws Exception {
+    logScenario("wAvailability penalizes candidates with heavier external activity load");
+    Account.Id heavilyLoadedId = Account.id(911);
+    Account.Id lightlyLoadedId = Account.id(912);
+
+    ChangeNotes changeNotes = mock(ChangeNotes.class);
+    ChangeNotes loadedNotes = mock(ChangeNotes.class);
+    Change change = mock(Change.class);
+    ChangeData targetChangeData = mock(ChangeData.class);
+
+    when(query.query(org.mockito.ArgumentMatchers.<Predicate<ChangeData>>any()))
+        .thenReturn(ImmutableList.of(), ImmutableList.of(), ImmutableList.of());
+    when(changeNotes.load()).thenReturn(loadedNotes);
+    when(changeNotes.getChange()).thenReturn(change);
+    when(change.getOwner()).thenReturn(Account.id(999));
+    when(changeDataFactory.create(loadedNotes)).thenReturn(targetChangeData);
+    when(targetChangeData.currentFilePaths()).thenReturn(ImmutableList.of("src/foo.ts"));
+    when(targetChangeData.getId()).thenReturn(Change.id(204));
+    when(approvalsUtil.getReviewers(changeNotes)).thenReturn(reviewerSet());
+
+    rebuildRecommenderWith(
+        ExternalActivityStore.forTesting(
+            ImmutableList.of(
+                new ExternalActivityStore.Row(
+                    heavilyLoadedId.get(), "acme/repo", "src/a.ts", 0, "github"),
+                new ExternalActivityStore.Row(
+                    heavilyLoadedId.get(), "acme/repo", "src/b.ts", 0, "github"),
+                new ExternalActivityStore.Row(
+                    heavilyLoadedId.get(), "acme/repo", "src/c.ts", 0, "github"),
+                new ExternalActivityStore.Row(
+                    lightlyLoadedId.get(), "acme/repo", "src/a.ts", 0, "github"))));
+
+    ImmutableList<Account.Id> result =
+        ImmutableList.copyOf(
+            recommender.suggestReviewers(
+                ReviewerState.REVIEWER,
+                changeNotes,
+                "",
+                projectState,
+                ImmutableList.of(heavilyLoadedId, lightlyLoadedId),
+                /* wOwnership= */ 0.0,
+                /* wFileFamiliarity= */ 0.0,
+                /* wEngagement= */ 0.0,
+                /* wCrossRepo= */ 0.0,
+                /* wAvailability= */ 1.0));
+
+    assertThat(result).containsExactly(lightlyLoadedId, heavilyLoadedId).inOrder();
+  }
+
+  @Test
   public void wRecentZeroSilencesExternalFileFamiliarity() throws Exception {
     logScenario("wRecent=0 disables the external-activity contribution to file familiarity");
     Account.Id externalReviewerId = Account.id(93);
@@ -420,15 +560,14 @@ public class ReviewerRecommenderTest {
     when(targetChangeData.getId()).thenReturn(Change.id(201));
     when(approvalsUtil.getReviewers(changeNotes)).thenReturn(reviewerSet());
 
-    // Use the *target* project for the row so the cross-repo signal (scaled by wContrib, not
-    // wRecent) is automatically excluded - this isolates wRecent's effect on file familiarity
-    // and engagement.
+    // Put the row in another project and set wContrib=0 below so both ownership/cross-repo are
+    // disabled. This isolates wRecent's effect on file familiarity + engagement.
     rebuildRecommenderWith(
         ExternalActivityStore.forTesting(
             ImmutableList.of(
                 new ExternalActivityStore.Row(
                     externalReviewerId.get(),
-                    projectName.get(),
+                    "acme/other-repo",
                     "src/foo.ts",
                     1,
                     "github"))));
@@ -445,7 +584,7 @@ public class ReviewerRecommenderTest {
                 projectState,
                 ImmutableList.of(baselineId, externalReviewerId),
                 /* wRecent= */ 0.0,
-                /* wContrib= */ 1.0));
+                /* wContrib= */ 0.0));
 
     assertThat(result).containsExactly(baselineId, externalReviewerId).inOrder();
   }
@@ -496,7 +635,12 @@ public class ReviewerRecommenderTest {
                 changeNotes,
                 "",
                 projectState,
-                ImmutableList.of(sameProjectReviewer, otherProjectReviewer)));
+                ImmutableList.of(sameProjectReviewer, otherProjectReviewer),
+                /* wOwnership= */ 0.0,
+                /* wFileFamiliarity= */ 0.0,
+                /* wEngagement= */ 0.0,
+                /* wCrossRepo= */ 1.0,
+                /* wAvailability= */ 0.0));
 
     assertThat(result).containsExactly(otherProjectReviewer, sameProjectReviewer).inOrder();
   }
