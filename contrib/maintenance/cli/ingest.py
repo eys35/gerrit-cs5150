@@ -9,6 +9,10 @@ By default the ingest is incremental: only changes updated after the
 last recorded timestamp for each project are fetched.  Use --full to
 re-ingest everything from scratch.
 
+For scheduled daily runs, prefer ``scripts/daily-offline-ingest.sh`` (see
+``contrib/maintenance/README.md``) so export to ``external-activity.json``
+happens in the same job.
+
 """
 
 
