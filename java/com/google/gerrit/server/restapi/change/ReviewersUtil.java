@@ -237,7 +237,9 @@ public class ReviewersUtil {
         if (filteredRecommendations.size() >= limit) {
           break;
         }
-        filteredRecommendations.add(reviewer);
+        if (visibilityControl.isVisibleTo(reviewer)) {
+          filteredRecommendations.add(reviewer);
+        }
       }
     }
     logger.atFine().log("Filtered recommendations: %s", filteredRecommendations);
@@ -257,7 +259,8 @@ public class ReviewersUtil {
         nonNegativeRecommendations.size(), filteredRecommendations.size());
 
     ImmutableMap<Account.Id, String> externalBoostedAccounts =
-        detectExternalBoostedAccounts(changeNotes, projectState, suggestReviewers, filteredRecommendations);
+        detectExternalBoostedAccounts(
+            changeNotes, projectState, suggestReviewers, filteredRecommendations);
     List<SuggestedReviewerInfo> suggestedReviewers =
         suggestReviewers(
             suggestReviewers,
@@ -281,7 +284,7 @@ public class ReviewersUtil {
   }
 
   // More accounts are suggested here than the requested limit because
-  // visibility filtering will be applied later.
+  // additional filtering may be applied later in the recommender pipeline.
   private ImmutableList<Account.Id> suggestAccounts(SuggestReviewers suggestReviewers)
       throws BadRequestException {
     try (Timer0.Context ctx = metrics.queryAccountsLatency.start()) {
@@ -309,9 +312,11 @@ public class ReviewersUtil {
                       suggestReviewers.getLimit() + 30,
                       ImmutableSet.of(idField.getName())))
               .readRaw();
+      AccountControl accountControl = accountControlFactory.get();
       ImmutableList<Account.Id> matches =
           result.toList().stream()
               .map(f -> fromIdField(f, useLegacyNumericFields))
+              .filter(accountControl::canSee)
               .collect(toImmutableList());
       logger.atFine().log("Matches: %s", matches);
       return matches;
