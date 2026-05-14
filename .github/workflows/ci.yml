@@ -25,11 +25,16 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install system deps
+      # Ubuntu's apt "chromium" is a transitional package that installs the snap;
+      # snap assertion fetches (api.snapcraft.io) often fail in CI with timeouts (408).
+      - name: Install Chrome for Karma (non-snap)
         run: |
           sudo apt-get update
-          sudo apt-get install -y chromium
-          echo "CHROME_BIN=/usr/bin/chromium" >> $GITHUB_ENV
+          curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-linux-signing-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          echo "CHROME_BIN=/usr/bin/google-chrome-stable" >> $GITHUB_ENV
 
       - name: Install Bazelisk and Yarn
         run: |
