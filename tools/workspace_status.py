@@ -12,6 +12,7 @@
 
 from __future__ import print_function
 import os
+import re
 import subprocess
 import sys
 
@@ -35,7 +36,34 @@ def revision(directory, parent):
         os.chdir(parent)
 
 
-print("STABLE_BUILD_GERRIT_LABEL %s" % revision(ROOT, ROOT))
+def read_gerrit_version_from_bzl():
+    """Fallback when git describe is unavailable (e.g. shallow CI clone without tags)."""
+    path = os.path.join(ROOT, "version.bzl")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            m = re.search(r'^GERRIT_VERSION = "([^"]+)"\s*$', f.read(), re.MULTILINE)
+            if m:
+                return m.group(1)
+    except IOError:
+        pass
+    return None
+
+
+def stable_gerrit_label(directory, parent):
+    rev = revision(directory, parent)
+    if rev:
+        return rev
+    if directory == ROOT:
+        bv = read_gerrit_version_from_bzl()
+        if bv:
+            return bv
+    return None
+
+
+print(
+    "STABLE_BUILD_GERRIT_LABEL %s"
+    % (stable_gerrit_label(ROOT, ROOT) or "unknown")
+)
 for kind in ['modules', 'plugins']:
     kind_dir = os.path.join(ROOT, kind)
     for d in os.listdir(kind_dir):

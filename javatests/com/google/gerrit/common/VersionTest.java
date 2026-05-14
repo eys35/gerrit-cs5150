@@ -27,7 +27,8 @@ public final class VersionTest {
 
   private static final Pattern GIT_DESCRIBE_PATTERN =
       Pattern.compile(
-          "^[1-9]+\\.[0-9]+(\\.[0-9]+)*(-rc[0-9]+)?(-[0-9]+" + "-g[0-9a-f]{7,})?(-dirty)?$");
+          "^([1-9]+\\.[0-9]+(\\.[0-9]+)*(-rc[0-9]+)?(-[0-9]+"
+              + "-g[0-9a-f]{7,})?(-SNAPSHOT)?(-dirty)?|unknown)$");
 
   @Test
   public void version() {
@@ -53,7 +54,11 @@ public final class VersionTest {
       assertThat("2.15.1-rc1" + suffix).matches(GIT_DESCRIBE_PATTERN);
       assertThat("2.15-rc2-123-gabcd123" + suffix).matches(GIT_DESCRIBE_PATTERN);
       assertThat("2.15-123-gabcd123" + suffix).matches(GIT_DESCRIBE_PATTERN);
+      assertThat("2.15-SNAPSHOT" + suffix).matches(GIT_DESCRIBE_PATTERN);
+      assertThat("2.15.1-SNAPSHOT" + suffix).matches(GIT_DESCRIBE_PATTERN);
     }
+
+    assertThat("unknown").matches(GIT_DESCRIBE_PATTERN);
 
     assertThat("2.15-ugly").doesNotMatch(GIT_DESCRIBE_PATTERN);
     assertThat("(dev)").doesNotMatch(GIT_DESCRIBE_PATTERN);
