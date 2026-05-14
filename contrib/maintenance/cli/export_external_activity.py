@@ -6,9 +6,14 @@ recommender loads this file at request time to factor external (e.g. GitHub)
 review history into its file-familiarity, engagement, and cross-repo
 signals - exactly the signals scaled by the reply dialog's weight sliders.
 
-The intended cron looks like::
+For a once-daily pipeline (Gerrit ingest, optional GitHub ingest, then this
+export), use ``contrib/maintenance/scripts/daily-offline-ingest.sh`` with
+``contrib/maintenance/systemd/gerrit-offline-ingest.timer`` or your own cron.
 
-    gerrit-maintenance projects ingest-github --repo X/Y ...
+Manual equivalent::
+
+    gerrit-maintenance projects ingest --gerrit-url ... --db ...
+    gerrit-maintenance projects ingest-github --repo X/Y ...   # optional
     gerrit-maintenance projects export-external-activity \\
         --db ./reviewer-activity.db \\
         --out /var/gerrit/data/external-activity.json

@@ -275,3 +275,30 @@ The extended gc will check for the existence of the following files:
 
 In the latter case, the file will be deleted, effectively causing an aggressive
 gc just once.
+
+## Offline reviewer-activity ingestion (daily)
+
+The algorithmic reviewer can read a JSON snapshot of external (for example
+GitHub) activity produced from a SQLite store. That store is filled by
+`gerrit-maintenance.py` subcommands `projects ingest`, optional
+`projects ingest-github`, and `projects export-external-activity`. To run this
+pipeline **once per day** instead of by hand, use:
+
+- `scripts/daily-offline-ingest.sh` — reads configuration from the environment
+  (see `conf/daily-offline-ingest.env.example`). Set `GERRIT_URL` and optionally
+  `GITHUB_TOKEN` / `GITHUB_REPOS` or `GITHUB_INGEST_BY_USER=1`.
+- `systemd/gerrit-offline-ingest.service` and `systemd/gerrit-offline-ingest.timer`
+  — install under `/etc/systemd/system/`, point `WorkingDirectory` and
+  `ExecStart` at your checkout of `contrib/maintenance`, copy the example env file
+  to `/etc/default/gerrit-offline-ingest`, then `systemctl enable --now
+  gerrit-offline-ingest.timer`.
+
+The timer uses `OnCalendar=daily` with `RandomizedDelaySec=45min` so the job
+fires once per calendar day with spread load. Override `OnCalendar` in a
+drop-in if you need a specific time.
+
+Cron alternative (daily at 02:15, with env file):
+
+```sh
+15 2 * * * . /etc/default/gerrit-offline-ingest && /var/gerrit/maintenance/scripts/daily-offline-ingest.sh
+```
