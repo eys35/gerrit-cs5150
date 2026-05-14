@@ -52,6 +52,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.eclipse.jgit.lib.Config;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -104,6 +105,19 @@ public class DefaultMemoryCacheFactoryTest {
     cacheGetStarted = new CyclicBarrier(2);
     cacheGetCompleted = new CyclicBarrier(2);
     evictionReceived = new CyclicBarrier(2);
+  }
+
+  @After
+  public void shutDown() {
+    executor.shutdown();
+    try {
+      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      executor.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Test
@@ -161,8 +175,13 @@ public class DefaultMemoryCacheFactoryTest {
 
     evictionReceived.await(TEST_TIMEOUT_SEC, TimeUnit.SECONDS);
     assertThat(forwardingRemovalListener.contains(TEST_CACHE_KEY, TEST_CACHE_VALUE)).isTrue();
-    assertThat(forwardingRemovalListener.removalThreadName(TEST_CACHE_KEY))
-        .startsWith(threadPoolPrefix);
+    String removalThread = forwardingRemovalListener.removalThreadName(TEST_CACHE_KEY);
+    if (threadPoolPrefix.equals("ForkJoinPool")) {
+      // Caffeine defaults to ForkJoinPool.commonPool(); thread naming varies slightly by JDK.
+      assertThat(removalThread).contains("ForkJoinPool");
+    } else {
+      assertThat(removalThread).startsWith(threadPoolPrefix);
+    }
   }
 
   @Test
