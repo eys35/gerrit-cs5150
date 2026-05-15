@@ -53,6 +53,7 @@ import com.google.gerrit.server.account.AccountLoader;
 import com.google.gerrit.server.account.AccountState;
 import com.google.gerrit.server.account.GroupBackend;
 import com.google.gerrit.server.account.GroupMembers;
+import com.google.gerrit.server.account.ServiceUserClassifier;
 import com.google.gerrit.server.change.ReviewerModifier;
 import com.google.gerrit.server.index.account.AccountField;
 import com.google.gerrit.server.index.account.AccountIndexCollection;
@@ -134,6 +135,7 @@ public class ReviewersUtil {
   private final IndexConfig indexConfig;
   private final AccountControl.Factory accountControlFactory;
   private final Provider<CurrentUser> self;
+  private final ServiceUserClassifier serviceUserClassifier;
 
   private static class RecommendationResult {
     final List<Account.Id> sortedRecommendations;
@@ -159,7 +161,8 @@ public class ReviewersUtil {
       AccountIndexCollection accountIndexes,
       IndexConfig indexConfig,
       AccountControl.Factory accountControlFactory,
-      Provider<CurrentUser> self) {
+      Provider<CurrentUser> self,
+      ServiceUserClassifier serviceUserClassifier) {
     this.accountVisibility = accountVisibility;
     this.accountLoaderFactory = accountLoaderFactory;
     this.accountQueryBuilder = accountQueryBuilder;
@@ -172,6 +175,7 @@ public class ReviewersUtil {
     this.indexConfig = indexConfig;
     this.accountControlFactory = accountControlFactory;
     this.self = self;
+    this.serviceUserClassifier = serviceUserClassifier;
   }
 
   public interface VisibilityControl {
@@ -237,7 +241,11 @@ public class ReviewersUtil {
         if (filteredRecommendations.size() >= limit) {
           break;
         }
-        if (visibilityControl.isVisibleTo(reviewer)) {
+        if (suggestReviewers.isSkipServiceUsers()
+            && serviceUserClassifier.isServiceUser(reviewer)) {
+          continue;
+        }
+        if (visibilityControl.isVisibleTo(reviewer) && accountControl.canSee(reviewer)) {
           filteredRecommendations.add(reviewer);
         }
       }
@@ -284,7 +292,7 @@ public class ReviewersUtil {
   }
 
   // More accounts are suggested here than the requested limit because
-  // additional filtering may be applied later in the recommender pipeline.
+  // visibility filtering will be applied later.
   private ImmutableList<Account.Id> suggestAccounts(SuggestReviewers suggestReviewers)
       throws BadRequestException {
     try (Timer0.Context ctx = metrics.queryAccountsLatency.start()) {
