@@ -255,16 +255,27 @@ public class ReviewersUtil {
         "Reviewer pipeline stage: visibility/service-user filtering kept %s candidates",
         filteredRecommendations.size());
 
+    List<Account.Id> nonNegativeRecommendations = new ArrayList<>();
+    for (Account.Id reviewer : filteredRecommendations) {
+      Double score = recommendationResult.normalizedScores.get(reviewer);
+      if (score == null || score >= 0d) {
+        nonNegativeRecommendations.add(reviewer);
+      }
+    }
+    logger.atFine().log(
+        "Reviewer pipeline stage: non-negative score filter kept %s/%s candidates",
+        nonNegativeRecommendations.size(), filteredRecommendations.size());
+
     ImmutableMap<Account.Id, String> externalBoostedAccounts =
         detectExternalBoostedAccounts(
-            changeNotes, projectState, suggestReviewers, filteredRecommendations);
+            changeNotes, projectState, suggestReviewers, nonNegativeRecommendations);
     List<SuggestedReviewerInfo> suggestedReviewers =
         suggestReviewers(
             suggestReviewers,
             projectState,
             visibilityControl,
             excludeGroups,
-            filteredRecommendations,
+            nonNegativeRecommendations,
             externalBoostedAccounts,
             recommendationResult.normalizedScores);
     logger.atFine().log("Suggested reviewers: %s", formatSuggestedReviewers(suggestedReviewers));

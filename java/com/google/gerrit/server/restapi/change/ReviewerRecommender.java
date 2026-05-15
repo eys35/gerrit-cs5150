@@ -239,11 +239,7 @@ public class ReviewerRecommender {
       // Get the user's recent changes and add them as candidates
       double recentChangeCandidatesWeight = config.getInt("addReviewer", "baseWeight", 1);
       logger.atFine().log("recentChangeCandidatesWeight: %s", recentChangeCandidatesWeight);
-      changes =
-          queryRecentChanges(
-              Predicate.and(
-                  ChangePredicates.owner(identifiedUser.get().getAccountId()),
-                  ChangePredicates.project(projectState.getNameKey())));
+      changes = queryRecentChanges(ChangePredicates.owner(identifiedUser.get().getAccountId()));
       getMatchingReviewers(changes, query)
           .forEach(
               reviewerCandidate ->
