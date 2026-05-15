@@ -255,17 +255,6 @@ public class ReviewersUtil {
         "Reviewer pipeline stage: visibility/service-user filtering kept %s candidates",
         filteredRecommendations.size());
 
-    List<Account.Id> nonNegativeRecommendations = new ArrayList<>();
-    for (Account.Id reviewer : filteredRecommendations) {
-      Double score = recommendationResult.normalizedScores.get(reviewer);
-      if (score == null || score >= 0d) {
-        nonNegativeRecommendations.add(reviewer);
-      }
-    }
-    logger.atFine().log(
-        "Reviewer pipeline stage: non-negative score filter kept %s/%s candidates",
-        nonNegativeRecommendations.size(), filteredRecommendations.size());
-
     ImmutableMap<Account.Id, String> externalBoostedAccounts =
         detectExternalBoostedAccounts(
             changeNotes, projectState, suggestReviewers, filteredRecommendations);
@@ -275,7 +264,7 @@ public class ReviewersUtil {
             projectState,
             visibilityControl,
             excludeGroups,
-            nonNegativeRecommendations,
+            filteredRecommendations,
             externalBoostedAccounts,
             recommendationResult.normalizedScores);
     logger.atFine().log("Suggested reviewers: %s", formatSuggestedReviewers(suggestedReviewers));
@@ -320,11 +309,9 @@ public class ReviewersUtil {
                       suggestReviewers.getLimit() + 30,
                       ImmutableSet.of(idField.getName())))
               .readRaw();
-      AccountControl accountControl = accountControlFactory.get();
       ImmutableList<Account.Id> matches =
           result.toList().stream()
               .map(f -> fromIdField(f, useLegacyNumericFields))
-              .filter(accountControl::canSee)
               .collect(toImmutableList());
       logger.atFine().log("Matches: %s", matches);
       return matches;
