@@ -26,7 +26,7 @@ import {
   InheritedBooleanInfoConfiguredValue,
   SubmitType,
 } from '../../../constants/constants';
-import { changeIsOpen, isOwner } from '../../../utils/change-util';
+import {changeIsOpen, isOwner} from '../../../utils/change-util';
 import {
   AccountDetailInfo,
   AccountInfo,
@@ -50,10 +50,10 @@ import {
   ServerInfo,
   WebLinkInfo,
 } from '../../../types/common';
-import { assertIsDefined, assertNever, unique } from '../../../utils/common-util';
-import { GrEditableLabel } from '../../shared/gr-editable-label/gr-editable-label';
-import { GrLinkedChip } from '../../shared/gr-linked-chip/gr-linked-chip';
-import { getAppContext } from '../../../services/app-context';
+import {assertIsDefined, assertNever, unique} from '../../../utils/common-util';
+import {GrEditableLabel} from '../../shared/gr-editable-label/gr-editable-label';
+import {GrLinkedChip} from '../../shared/gr-linked-chip/gr-linked-chip';
+import {getAppContext} from '../../../services/app-context';
 import {
   Metadata,
   isSectionSet,
@@ -74,27 +74,27 @@ import {
   AutocompleteQuery,
   AutocompleteSuggestion,
 } from '../../shared/gr-autocomplete/gr-autocomplete';
-import { getRevertCreatedChangeIds } from '../../../utils/message-util';
-import { Interaction } from '../../../constants/reporting';
-import { getApprovalInfo, getCodeReviewLabel } from '../../../utils/label-util';
-import { LitElement, css, html, nothing, PropertyValues } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
-import { sharedStyles } from '../../../styles/shared-styles';
-import { fontStyles } from '../../../styles/gr-font-styles';
-import { changeMetadataStyles } from '../../../styles/gr-change-metadata-shared-styles';
-import { when } from 'lit/directives/when.js';
-import { createSearchUrl } from '../../../models/views/search';
-import { createChangeUrl } from '../../../models/views/change';
-import { getChangeWeblinks } from '../../../utils/weblink-util';
-import { throwingErrorCallback } from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
-import { subscribe } from '../../lit/subscription-controller';
-import { userModelToken } from '../../../models/user/user-model';
-import { resolve } from '../../../models/dependency';
-import { configModelToken } from '../../../models/config/config-model';
-import { changeModelToken } from '../../../models/change/change-model';
-import { relatedChangesModelToken } from '../../../models/change/related-changes-model';
-import { truncatePath } from '../../../utils/path-list-util';
-import { accountEmail, getDisplayName } from '../../../utils/display-name-util';
+import {getRevertCreatedChangeIds} from '../../../utils/message-util';
+import {Interaction} from '../../../constants/reporting';
+import {getApprovalInfo, getCodeReviewLabel} from '../../../utils/label-util';
+import {LitElement, css, html, nothing, PropertyValues} from 'lit';
+import {customElement, property, query, state} from 'lit/decorators.js';
+import {sharedStyles} from '../../../styles/shared-styles';
+import {fontStyles} from '../../../styles/gr-font-styles';
+import {changeMetadataStyles} from '../../../styles/gr-change-metadata-shared-styles';
+import {when} from 'lit/directives/when.js';
+import {createSearchUrl} from '../../../models/views/search';
+import {createChangeUrl} from '../../../models/views/change';
+import {getChangeWeblinks} from '../../../utils/weblink-util';
+import {throwingErrorCallback} from '../../shared/gr-rest-api-interface/gr-rest-apis/gr-rest-api-helper';
+import {subscribe} from '../../lit/subscription-controller';
+import {userModelToken} from '../../../models/user/user-model';
+import {resolve} from '../../../models/dependency';
+import {configModelToken} from '../../../models/config/config-model';
+import {changeModelToken} from '../../../models/change/change-model';
+import {relatedChangesModelToken} from '../../../models/change/related-changes-model';
+import {truncatePath} from '../../../utils/path-list-util';
+import {accountEmail, getDisplayName} from '../../../utils/display-name-util';
 
 const HASHTAG_ADD_MESSAGE = 'Add Hashtag';
 const REVIEWER_WEIGHTS_STORAGE_KEY = 'gerrit.reviewerSuggestionWeights.v1';
@@ -143,7 +143,7 @@ export class GrChangeMetadata extends LitElement {
   // TODO: Convert to @state. That requires the change model to keep track of
   // current revision actions. Then we can also get rid of the
   // `revision-actions-changed` event.
-  @property({ type: Boolean }) parentIsCurrent?: boolean;
+  @property({type: Boolean}) parentIsCurrent?: boolean;
 
   @state() change?: ParsedChangeInfo;
 

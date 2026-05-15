@@ -14,8 +14,8 @@ import '../../shared/gr-account-list/gr-account-list';
 import '../gr-label-scores/gr-label-scores';
 import '../gr-thread-list/gr-thread-list';
 import '../../../styles/shared-styles';
-import { GrReviewerSuggestionsProvider } from '../../../services/gr-reviewer-suggestions-provider/gr-reviewer-suggestions-provider';
-import { getAppContext } from '../../../services/app-context';
+import {GrReviewerSuggestionsProvider} from '../../../services/gr-reviewer-suggestions-provider/gr-reviewer-suggestions-provider';
+import {getAppContext} from '../../../services/app-context';
 import {
   ChangeStatus,
   DraftsAction,
@@ -34,9 +34,9 @@ import {
   removeServiceUsers,
   toReviewInput,
 } from '../../../utils/account-util';
-import { TargetElement } from '../../../api/plugin';
-import { isDefined, ParsedChangeInfo } from '../../../types/types';
-import { GrAccountList } from '../../shared/gr-account-list/gr-account-list';
+import {TargetElement} from '../../../api/plugin';
+import {isDefined, ParsedChangeInfo} from '../../../types/types';
+import {GrAccountList} from '../../shared/gr-account-list/gr-account-list';
 import {
   AccountId,
   AccountInfo,
@@ -59,9 +59,9 @@ import {
   isDraft,
   ChangeViewChangeInfo,
 } from '../../../types/common';
-import { GrButton } from '../../shared/gr-button/gr-button';
-import { GrLabelScores } from '../gr-label-scores/gr-label-scores';
-import { GrLabelScoreRow } from '../gr-label-score-row/gr-label-score-row';
+import {GrButton} from '../../shared/gr-button/gr-button';
+import {GrLabelScores} from '../gr-label-scores/gr-label-scores';
+import {GrLabelScoreRow} from '../gr-label-score-row/gr-label-score-row';
 import {
   areSetsEqual,
   assertIsDefined,
@@ -74,13 +74,13 @@ import {
   isPatchsetLevel,
   isUnresolved,
 } from '../../../utils/comment-util';
-import { GrAccountChip } from '../../shared/gr-account-chip/gr-account-chip';
+import {GrAccountChip} from '../../shared/gr-account-chip/gr-account-chip';
 import {
   getApprovalInfo,
   getMaxAccounts,
   StandardLabels,
 } from '../../../utils/label-util';
-import { pluralize } from '../../../utils/string-util';
+import {pluralize} from '../../../utils/string-util';
 import {
   fireAlert,
   fireError,
@@ -91,48 +91,48 @@ import {
   fireReload,
 } from '../../../utils/event-util';
 
-import { ErrorCallback } from '../../../api/rest';
-import { DelayedTask } from '../../../utils/async-util';
-import { Interaction, Timing } from '../../../constants/reporting';
-import { debounce } from '../../../utils/async-util';
+import {ErrorCallback} from '../../../api/rest';
+import {DelayedTask} from '../../../utils/async-util';
+import {Interaction, Timing} from '../../../constants/reporting';
+import {debounce} from '../../../utils/async-util';
 import {
   getMentionedReason,
   getReplyByReason,
 } from '../../../utils/attention-set-util';
-import { RestApiService } from '../../../services/gr-rest-api/gr-rest-api';
-import { resolve } from '../../../models/dependency';
-import { changeModelToken } from '../../../models/change/change-model';
-import { LabelNameToValuesMap, PatchSetNumber } from '../../../api/rest-api';
-import { css, html, PropertyValues, LitElement, nothing } from 'lit';
-import { sharedStyles } from '../../../styles/shared-styles';
-import { when } from 'lit/directives/when.js';
-import { classMap } from 'lit/directives/class-map.js';
+import {RestApiService} from '../../../services/gr-rest-api/gr-rest-api';
+import {resolve} from '../../../models/dependency';
+import {changeModelToken} from '../../../models/change/change-model';
+import {LabelNameToValuesMap, PatchSetNumber} from '../../../api/rest-api';
+import {css, html, PropertyValues, LitElement, nothing} from 'lit';
+import {sharedStyles} from '../../../styles/shared-styles';
+import {when} from 'lit/directives/when.js';
+import {classMap} from 'lit/directives/class-map.js';
 import {
   AddReviewerEvent,
   RemoveReviewerEvent,
   ValueChangedEvent,
 } from '../../../types/events';
-import { customElement, property, state, query } from 'lit/decorators.js';
-import { subscribe } from '../../lit/subscription-controller';
-import { configModelToken } from '../../../models/config/config-model';
-import { hasHumanReviewer } from '../../../utils/change-util';
-import { commentsModelToken } from '../../../models/comments/comments-model';
+import {customElement, property, state, query} from 'lit/decorators.js';
+import {subscribe} from '../../lit/subscription-controller';
+import {configModelToken} from '../../../models/config/config-model';
+import {hasHumanReviewer} from '../../../utils/change-util';
+import {commentsModelToken} from '../../../models/comments/comments-model';
 import {
   CommentEditingChangedDetail,
   GrComment,
 } from '../../shared/gr-comment/gr-comment';
-import { ShortcutController } from '../../lit/shortcut-controller';
-import { Key, Modifier, whenVisible } from '../../../utils/dom-util';
-import { GrThreadList } from '../gr-thread-list/gr-thread-list';
-import { userModelToken } from '../../../models/user/user-model';
-import { accountsModelToken } from '../../../models/accounts/accounts-model';
-import { pluginLoaderToken } from '../../shared/gr-js-api-interface/gr-plugin-loader';
-import { modalStyles } from '../../../styles/gr-modal-styles';
-import { ironAnnouncerRequestAvailability } from '../../polymer-util';
-import { GrReviewerUpdatesParser } from '../../shared/gr-rest-api-interface/gr-reviewer-updates-parser';
-import { formStyles } from '../../../styles/form-styles';
-import { navigationToken } from '../../core/gr-navigation/gr-navigation';
-import { getDocUrl } from '../../../utils/url-util';
+import {ShortcutController} from '../../lit/shortcut-controller';
+import {Key, Modifier, whenVisible} from '../../../utils/dom-util';
+import {GrThreadList} from '../gr-thread-list/gr-thread-list';
+import {userModelToken} from '../../../models/user/user-model';
+import {accountsModelToken} from '../../../models/accounts/accounts-model';
+import {pluginLoaderToken} from '../../shared/gr-js-api-interface/gr-plugin-loader';
+import {modalStyles} from '../../../styles/gr-modal-styles';
+import {ironAnnouncerRequestAvailability} from '../../polymer-util';
+import {GrReviewerUpdatesParser} from '../../shared/gr-rest-api-interface/gr-reviewer-updates-parser';
+import {formStyles} from '../../../styles/form-styles';
+import {navigationToken} from '../../core/gr-navigation/gr-navigation';
+import {getDocUrl} from '../../../utils/url-util';
 import {
   readJSONResponsePayload,
   ResponsePayload,
@@ -190,19 +190,19 @@ export class GrReplyDialog extends LitElement {
   private readonly getCommentsModel = resolve(this, commentsModelToken);
 
   // TODO: update type to only ParsedChangeInfo
-  @property({ type: Object })
+  @property({type: Object})
   change?: ParsedChangeInfo | ChangeInfo;
 
-  @property({ type: Boolean })
+  @property({type: Boolean})
   canBeStarted = false;
 
-  @property({ type: Boolean, reflect: true })
+  @property({type: Boolean, reflect: true})
   disabled = false;
 
   @state()
   draftCommentThreads: CommentThread[] = [];
 
-  @property({ type: Object })
+  @property({type: Object})
   permittedLabels?: LabelNameToValuesMap;
 
   @query('#patchsetLevelComment') patchsetLevelGrComment?: GrComment;

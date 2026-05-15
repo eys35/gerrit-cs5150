@@ -24,7 +24,7 @@ import {
   DraftsAction,
   ReviewerState,
 } from '../../../constants/constants';
-import { StandardLabels } from '../../../utils/label-util';
+import {StandardLabels} from '../../../utils/label-util';
 import {
   createAccountWithEmail,
   createAccountWithId,
@@ -36,7 +36,7 @@ import {
   createRevision,
   createServiceUserWithId,
 } from '../../../test/test-data-generators';
-import { GrReplyDialog } from './gr-reply-dialog';
+import {GrReplyDialog} from './gr-reply-dialog';
 import {
   AccountId,
   AccountInfo,
@@ -58,25 +58,25 @@ import {
   UrlEncodedCommentId,
   UserId,
 } from '../../../types/common';
-import { GrAccountList } from '../../shared/gr-account-list/gr-account-list';
-import { GrLabelScoreRow } from '../gr-label-score-row/gr-label-score-row';
-import { GrLabelScores } from '../gr-label-scores/gr-label-scores';
-import { fixture, html, waitUntil, assert } from '@open-wc/testing';
-import { accountKey } from '../../../utils/account-util';
-import { GrButton } from '../../shared/gr-button/gr-button';
-import { GrAccountLabel } from '../../shared/gr-account-label/gr-account-label';
-import { Key, Modifier } from '../../../utils/dom-util';
-import { GrComment } from '../../shared/gr-comment/gr-comment';
-import { testResolver } from '../../../test/common-test-setup';
+import {GrAccountList} from '../../shared/gr-account-list/gr-account-list';
+import {GrLabelScoreRow} from '../gr-label-score-row/gr-label-score-row';
+import {GrLabelScores} from '../gr-label-scores/gr-label-scores';
+import {fixture, html, waitUntil, assert} from '@open-wc/testing';
+import {accountKey} from '../../../utils/account-util';
+import {GrButton} from '../../shared/gr-button/gr-button';
+import {GrAccountLabel} from '../../shared/gr-account-label/gr-account-label';
+import {Key, Modifier} from '../../../utils/dom-util';
+import {GrComment} from '../../shared/gr-comment/gr-comment';
+import {testResolver} from '../../../test/common-test-setup';
 import {
   CommentsModel,
   commentsModelToken,
 } from '../../../models/comments/comments-model';
-import { isOwner } from '../../../utils/change-util';
-import { createNewPatchsetLevel } from '../../../utils/comment-util';
-import { Timing } from '../../../constants/reporting';
-import { ParsedChangeInfo } from '../../../types/types';
-import { changeModelToken } from '../../../models/change/change-model';
+import {isOwner} from '../../../utils/change-util';
+import {createNewPatchsetLevel} from '../../../utils/comment-util';
+import {Timing} from '../../../constants/reporting';
+import {ParsedChangeInfo} from '../../../types/types';
+import {changeModelToken} from '../../../models/change/change-model';
 
 function cloneableResponse(status: number, text: string) {
   return {
